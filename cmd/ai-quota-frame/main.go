@@ -73,6 +73,7 @@ func run() int {
 		logger.Error("initialize renderer", "error", err)
 		return 2
 	}
+	renderer.SetDisplayProviders(configuration.DisplayProviders)
 	api := httpapi.New(quotaService, renderer, configuration.FrameAccessToken, configuration.AllowNoToken)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

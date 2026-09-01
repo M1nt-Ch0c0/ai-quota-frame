@@ -90,7 +90,17 @@ curl -sS \
       ],
       "warning": "active refresh failed; showing the latest CLIProxyAPI response-header observation"
     }
-  ]
+  ],
+  "usage": {
+    "today_tokens": 12345678,
+    "today_cost": 4.21,
+    "currency": "$",
+    "source": "cpa-manager-plus",
+    "days": [
+      {"date": "2026-08-25", "tokens": 6800000, "cost": 2.05},
+      {"date": "2026-08-31", "tokens": 12345678, "cost": 4.21}
+    ]
+  }
 }
 ```
 
@@ -111,6 +121,7 @@ curl -sS \
 - `windows[].observed_at`：该窗口值实际被主动查询或由 CLIProxyAPI Header 观察到的时间，不是看板调度时间。服务会用它避免让更老的被动 Header 覆盖刚取得的主动结果。
 - 百分比和 `resets_at` 都是可选字段。上游没有给出可信值时字段会省略，客户端不得把缺失值当作 `0`。
 - `warning`、`error` 与顶层 `errors` 都是可选字段。
+- `usage`：可选。今日 token/费用，以及近 7 日按日序列 `usage.days[]`（`date`、`tokens`、`cost`）。来源为 `cpa-manager-plus` 或演示模式的 `demo`。缺失时客户端不得把用量当作 `0`。
 
 ### ETag 与 304
 

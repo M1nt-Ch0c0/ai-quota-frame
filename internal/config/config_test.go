@@ -21,6 +21,9 @@ func TestFromEnvDemoDefaults(t *testing.T) {
 	if configuration.ListenAddr != ":8787" || configuration.RefreshInterval != 5*time.Minute {
 		t.Fatalf("defaults = %#v", configuration)
 	}
+	if len(configuration.DisplayProviders) != 3 || configuration.DisplayProviders[0].Label != "CODEX" {
+		t.Fatalf("default display providers = %#v", configuration.DisplayProviders)
+	}
 }
 
 func TestFromEnvRequiresIndependentSecrets(t *testing.T) {
@@ -94,7 +97,7 @@ func clearConfigEnv(t *testing.T) {
 	for _, name := range []string{
 		"LISTEN_ADDR", "CLIPROXY_BASE_URL", "CLIPROXY_MANAGEMENT_KEY", "FRAME_ACCESS_TOKEN",
 		"REFRESH_INTERVAL", "PASSIVE_MAX_AGE", "REQUEST_TIMEOUT", "MAX_CONCURRENCY", "TZ",
-		"DEMO_MODE", "ALLOW_INSECURE_NO_TOKEN", "CPAMP_BASE_URL", "CPAMP_ADMIN_KEY",
+		"DEMO_MODE", "ALLOW_INSECURE_NO_TOKEN", "CPAMP_BASE_URL", "CPAMP_ADMIN_KEY", "DISPLAY_PROVIDERS",
 	} {
 		t.Setenv(name, "")
 	}
@@ -132,5 +135,20 @@ func TestFromEnvUsageCollectorURLRequiresAdminKey(t *testing.T) {
 	_, err := FromEnv()
 	if err == nil || !strings.Contains(err.Error(), "CPAMP_ADMIN_KEY is required") {
 		t.Fatalf("FromEnv() error = %v, want CPAMP_ADMIN_KEY requirement", err)
+	}
+}
+
+func TestFromEnvParsesDisplayProviders(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("DEMO_MODE", "true")
+	t.Setenv("FRAME_ACCESS_TOKEN", "frame-token")
+	t.Setenv("DISPLAY_PROVIDERS", "codex,claude")
+
+	configuration, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if len(configuration.DisplayProviders) != 2 || configuration.DisplayProviders[1].Label != "CLAUDE" {
+		t.Fatalf("DisplayProviders = %#v", configuration.DisplayProviders)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
 )
 
 type Config struct {
@@ -17,6 +19,7 @@ type Config struct {
 	FrameAccessToken string
 	CPAMPBaseURL     string
 	CPAMPAdminKey    string
+	DisplayProviders []dashboard.DisplayProvider
 	RefreshInterval  time.Duration
 	PassiveMaxAge    time.Duration
 	RequestTimeout   time.Duration
@@ -60,12 +63,17 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("load TZ %q: %w", timezone, err)
 	}
+	providers, err := dashboard.ParseDisplayProviders(os.Getenv("DISPLAY_PROVIDERS"))
+	if err != nil {
+		return Config{}, err
+	}
 
 	config := Config{
 		ListenAddr:       envString("LISTEN_ADDR", ":8787"),
 		CLIProxyBaseURL:  strings.TrimRight(envString("CLIPROXY_BASE_URL", "http://127.0.0.1:8317"), "/"),
 		ManagementKey:    strings.TrimSpace(os.Getenv("CLIPROXY_MANAGEMENT_KEY")),
 		FrameAccessToken: strings.TrimSpace(os.Getenv("FRAME_ACCESS_TOKEN")),
+		DisplayProviders: providers,
 		RefreshInterval:  refreshInterval,
 		PassiveMaxAge:    passiveMaxAge,
 		RequestTimeout:   requestTimeout,

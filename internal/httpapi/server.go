@@ -170,11 +170,13 @@ func frameContentKey(snapshot quota.Snapshot) ([sha256.Size]byte, error) {
 		DataUpdatedAt time.Time       `json:"data_updated_at"`
 		Stale         bool            `json:"stale"`
 		Accounts      []quota.Account `json:"accounts"`
+		Usage         *quota.Usage    `json:"usage,omitempty"`
 		Errors        []string        `json:"errors,omitempty"`
 	}{
 		DataUpdatedAt: snapshot.DataUpdatedAt,
 		Stale:         snapshot.Stale,
 		Accounts:      accounts,
+		Usage:         snapshot.Usage,
 		Errors:        snapshot.Errors,
 	})
 	if err != nil {

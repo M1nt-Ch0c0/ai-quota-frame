@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=800, height=480, initial-scale=1">
+  <title>AI Quota Frame</title>
+  <link rel="stylesheet" href="frame.css">
+</head>
+<body>
+  <div class="frame">
+    <aside class="accent"></aside>
+
+    <header class="header">
+      <div class="header-left">
+        <h1>AI QUOTA</h1>
+        <span class="badge badge-{{.StatusClass}}">{{.StatusText}}</span>
+      </div>
+      <div class="header-right">{{.UpdatedText}}</div>
+    </header>
+
+    <main class="rows rows-{{.RowCount}}">
+      {{range .Rows}}
+      <section class="row row-{{.StatusClass}}">
+        <div class="row-accent"></div>
+        <div class="row-meta">
+          <div class="provider-line">
+            <span class="provider">{{.Provider}}</span>
+            <span class="status status-{{.StatusClass}}">{{.Status}}{{if .Stale}} / STALE{{end}}</span>
+          </div>
+          <div class="detail">{{.Detail}}</div>
+        </div>
+        <div class="row-windows">
+          {{if .Windows}}
+            {{range .Windows}}
+            <div class="window">
+              <div class="window-head">
+                <span class="window-label">{{.Label}}</span>
+                <span class="window-percent percent-{{.PercentClass}}">{{.PercentText}}</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill fill-{{.PercentClass}}" style="width: {{.BarWidth}}%;"></div>
+              </div>
+              <div class="window-reset">{{.ResetText}}</div>
+            </div>
+            {{end}}
+          {{else}}
+            <div class="window window-empty">No quota window available</div>
+          {{end}}
+        </div>
+      </section>
+      {{end}}
+    </main>
+
+    <section class="chart-card">
+      {{if .Chart}}
+      <div class="chart-head">
+        <span class="chart-title">{{.Chart.Title}}</span>
+        <span class="chart-legend">
+          <span class="swatch swatch-tokens"></span> Tokens
+          <span class="swatch swatch-cost"></span> API $
+        </span>
+      </div>
+      <div class="chart">
+        {{range .Chart.Days}}
+        <div class="chart-day">
+          <div class="chart-bars">
+            <div class="chart-bar bar-tokens" style="height: {{.TokenHeight}}%;" title="{{.TokenTitle}}"></div>
+            <div class="chart-bar bar-cost" style="height: {{.CostHeight}}%;" title="{{.CostTitle}}"></div>
+          </div>
+          <div class="chart-label">{{.Label}}</div>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <div class="chart-empty">7-day usage unavailable</div>
+      {{end}}
+    </section>
+
+    <footer class="stats">
+      {{if .Usage}}
+      <div class="stats-left">
+        <span class="stats-label">Today</span>
+        <span class="stats-tokens">{{.Usage.Tokens}}</span>
+        <span class="stats-cost">{{.Usage.Cost}}</span>
+      </div>
+      {{else}}
+      <div class="stats-left stats-unavailable">Usage data unavailable</div>
+      {{end}}
+      <div class="stats-right stats-{{.FooterClass}}">{{.Footer}}</div>
+    </footer>
+  </div>
+</body>
+</html>

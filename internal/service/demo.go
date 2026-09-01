@@ -49,10 +49,22 @@ const activeQuotaSourceDemo = "demo"
 type DemoUsageFetcher struct{}
 
 func (fetcher DemoUsageFetcher) FetchUsage(context.Context) (*quota.Usage, error) {
+	days := make([]quota.UsageDay, 7)
+	tokens := []int64{4_200_000, 6_800_000, 5_100_000, 9_400_000, 7_200_000, 3_600_000, 12_345_678}
+	costs := []float64{1.12, 2.05, 1.48, 3.10, 2.40, 0.96, 4.21}
+	base := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -6)
+	for index := range days {
+		days[index] = quota.UsageDay{
+			Date:   base.AddDate(0, 0, index).Format("2006-01-02"),
+			Tokens: tokens[index],
+			Cost:   costs[index],
+		}
+	}
 	return &quota.Usage{
 		TodayTokens: 12345678,
 		TodayCost:   4.21,
 		Currency:    "$",
 		Source:      activeQuotaSourceDemo,
+		Days:        days,
 	}, nil
 }

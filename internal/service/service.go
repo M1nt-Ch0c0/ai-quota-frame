@@ -165,13 +165,9 @@ func (service *Service) fetchUsage(ctx context.Context) *quota.Usage {
 
 func usageOrPrevious(current, previous *quota.Usage) *quota.Usage {
 	if current != nil {
-		return current
+		return cloneUsage(current)
 	}
-	if previous == nil {
-		return nil
-	}
-	copyUsage := *previous
-	return &copyUsage
+	return cloneUsage(previous)
 }
 
 func (service *Service) Snapshot() (quota.Snapshot, bool) {
@@ -184,10 +180,7 @@ func (service *Service) Snapshot() (quota.Snapshot, bool) {
 	copySnapshot.LastFreshAt = cloneTime(service.snapshot.LastFreshAt)
 	copySnapshot.Accounts = cloneAccounts(service.snapshot.Accounts)
 	copySnapshot.Errors = append([]string(nil), service.snapshot.Errors...)
-	if service.snapshot.Usage != nil {
-		copyUsage := *service.snapshot.Usage
-		copySnapshot.Usage = &copyUsage
-	}
+	copySnapshot.Usage = cloneUsage(service.snapshot.Usage)
 	return copySnapshot, service.ready
 }
 
@@ -283,6 +276,15 @@ func retentionKey(account quota.Account) string {
 	return account.Provider + "\x00name\x00" + account.Name
 }
 
+func cloneUsage(usage *quota.Usage) *quota.Usage {
+	if usage == nil {
+		return nil
+	}
+	copyUsage := *usage
+	copyUsage.Days = append([]quota.UsageDay(nil), usage.Days...)
+	return &copyUsage
+}
+
 func cloneAccounts(accounts []quota.Account) []quota.Account {
 	result := append([]quota.Account(nil), accounts...)
 	for index := range result {
@@ -334,10 +336,12 @@ func semanticFingerprint(snapshot quota.Snapshot) [sha256.Size]byte {
 	payload := struct {
 		Stale    bool            `json:"stale"`
 		Accounts []quota.Account `json:"accounts"`
+		Usage    *quota.Usage    `json:"usage,omitempty"`
 		Errors   []string        `json:"errors,omitempty"`
 	}{
 		Stale:    snapshot.Stale,
 		Accounts: accounts,
+		Usage:    cloneUsage(snapshot.Usage),
 		Errors:   snapshot.Errors,
 	}
 	encoded, _ := json.Marshal(payload)

@@ -30,13 +30,21 @@ type Account struct {
 	Error       string     `json:"error,omitempty"`
 }
 
-// Usage summarizes today's token consumption and estimated cost across all
+// UsageDay is one calendar day's token consumption and estimated API cost.
+type UsageDay struct {
+	Date   string  `json:"date"`
+	Tokens int64   `json:"tokens"`
+	Cost   float64 `json:"cost"`
+}
+
+// Usage summarizes token consumption and estimated cost across all
 // proxied providers, as reported by the local usage collector.
 type Usage struct {
-	TodayTokens int64   `json:"today_tokens"`
-	TodayCost   float64 `json:"today_cost"`
-	Currency    string  `json:"currency"`
-	Source      string  `json:"source"`
+	TodayTokens int64      `json:"today_tokens"`
+	TodayCost   float64    `json:"today_cost"`
+	Currency    string     `json:"currency"`
+	Source      string     `json:"source"`
+	Days        []UsageDay `json:"days,omitempty"`
 }
 
 type Snapshot struct {

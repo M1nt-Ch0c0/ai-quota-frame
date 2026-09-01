@@ -33,9 +33,11 @@ OAuth access token、refresh token、CLIProxyAPI management key、`auth_index` �
 | Gemini CLI | Pro、Flash 及其他 bucket | `GEMINI` |
 | Antigravity | 5h、weekly 及 quota-summary bucket | 并入 `GEMINI` |
 
-`GET /api/v1/quota` 可见 CLIProxyAPI 中其他被明确标记为 OAuth 的 provider；尚无已核验额度适配器时，它们会以 `unknown` 和警告呈现，不会伪造 `0%`。800x480 电子纸由于空间固定，只显示 `CODEX` / `CLAUDE` / `GEMINI` 三行；Gemini CLI 与 Antigravity 同时存在时在 Google 行做保守聚合。
+`GET /api/v1/quota` 可见 CLIProxyAPI 中其他被明确标记为 OAuth 的 provider；尚无已核验额度适配器时，它们会以 `unknown` 和警告呈现，不会伪造 `0%`。800x480 画面默认显示 `CODEX` / `GROK` / `KIMI` 三行，可通过 `DISPLAY_PROVIDERS` 改成任意最多 5 个订阅类型（例如 `codex,claude,google`）。Gemini CLI 与 Antigravity 可用 `google` 或 `gemini-cli+antigravity:GEMINI` 合并到同一行。
 
-主机对原始 email 做如 `j***@example.com` 的遮罩。CLIProxyAPI 中显式配置的 `label` / `note` 被视为操作者选定的显示别名，会截断后出现在 JSON API 中；不要在该字段放敏感信息。当前固定三行画面不显示账号名或别名。
+主机对原始 email 做如 `j***@example.com` 的遮罩。CLIProxyAPI 中显式配置的 `label` / `note` 被视为操作者选定的显示别名，会截断后出现在 JSON API 中；不要在该字段放敏感信息。当前画面不显示账号名或别名。
+
+配置了 CPAMP 用量采集后，画面下半部分显示近 7 日 token 用量与 API 折合价格柱状图；今日汇总会出现在底栏。
 
 ## 硬件前提
 
@@ -47,7 +49,8 @@ OAuth access token、refresh token、CLIProxyAPI management key、`auth_index` �
 
 ## 软件前提
 
-- Go 1.24 或更新的兼容工具链。
+- Go 1.24 或更新的兼容工具链（当前 `go.mod` 因 Chromium 截图依赖为 Go 1.26）。
+- 主机已安装 **Chromium 或 Google Chrome**（用于把 HTML/CSS 模板截图成 PNG；Docker 镜像已内置 `chromium`）。
 - 已在主机运行并完成 OAuth 账号管理的 CLIProxyAPI。
 - CLIProxyAPI management API 保持在 loopback，推荐 `http://127.0.0.1:8317`，并设置强 management key。
 - 相框与主机处于可互通的受信 2.4 GHz LAN/VLAN。
@@ -127,6 +130,7 @@ FRAME_ACCESS_TOKEN=replace-with-a-different-long-random-token
 | `REQUEST_TIMEOUT` | `20s` | `1s` 到 `2m` |
 | `MAX_CONCURRENCY` | `4` | `1` 到 `32` |
 | `TZ` | `Asia/Shanghai` | Go 时区名，用于 PNG 上的时间 |
+| `DISPLAY_PROVIDERS` | `codex,xai,kimi` | 画面上的 OAuth 订阅行，最多 5 个；格式 `id[+id...][:LABEL]`，例如 `codex,claude,google` |
 | `DEMO_MODE` | `false` | 真实运行保持 `false` |
 | `ALLOW_INSECURE_NO_TOKEN` | `false` | 只允许在隔离开发环境临时使用；无 token 时仅接受显式 loopback 监听地址 |
 
@@ -235,7 +239,8 @@ PhotoFrame 上游的 `/api/config` 当前没有认证，并会在 GET 响应中�
 - Codex、Claude、Gemini CLI 和 Antigravity 额度路径是从官方客户端或已核验社区项目观测到的内部契约，不是本项目能承诺稳定的公开计费 API。上游可能无通知改变 host、path、headers 或 JSON schema。
 - 本服务到 CLIProxyAPI management endpoint 的 HTTP client 不跟随重定向。但 CLIProxyAPI 内部 `api-call` 当前仍使用 Go 默认 redirect policy，本服务看不到最终 URL。高安全部署应给 CLIProxyAPI 配置出站 allowlist/防火墙，并关闭内层重定向。
 - Claude/Codex 的被动 Header 回退是带 `observed_at` 的最近观测，不是当前时刻额度的强证明。超过 `PASSIVE_MAX_AGE` 后不再使用。
-- 当前 E6 画面固定为三行，JSON API 的 provider/account 范围更广。
+- 当前 E6 画面只显示 `DISPLAY_PROVIDERS` 配置的订阅行（默认三行）；JSON API 的 provider/account 范围更广。
+- 近 7 日柱状图依赖 cpa-manager-plus 的 `dashboard/summary` 按日窗口查询；采集器不可用时画面保留上次成功数据或显示 unavailable。
 - 本地 fixture 测试能证明解析器与已核对契约一致，但不能代替使用者当前账号、当前 CLIProxyAPI 版本和真机硬件的现场验证。
 
 契约来源、核验 commit、内部端点与降级策略见 [docs/research.md](docs/research.md)。
@@ -246,11 +251,12 @@ PhotoFrame 上游的 `/api/config` 当前没有认证，并会在 GET 响应中�
 cmd/ai-quota-frame/        process entrypoint and HTTP lifecycle
 internal/cliproxy/         CLIProxyAPI client, provider adapters, passive fallback
 internal/service/          refresh, retention, stale state, semantic fingerprint
-internal/dashboard/        deterministic 800x480 PNG renderer
+internal/dashboard/        HTML/CSS 模板 + Headless Chromium 渲染 800x480 PNG
 internal/httpapi/          Bearer-protected read-only LAN API and ETag
 scripts/                   PhotoFrame configuration preflight
 deploy/                    hardened systemd unit
 docs/api.md                normalized host API
 docs/device.md             SKU, firmware, Wi-Fi and frame configuration
 docs/research.md           external evidence and stability boundaries
+internal/dashboard/README.md 画面模板维护说明（改 UI 看这里）
 ```

@@ -7,13 +7,16 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestFetchUsageReadsDashboardSummary(t *testing.T) {
+func TestFetchUsageReadsSevenDailyWindows(t *testing.T) {
 	location := time.FixedZone("UTC+8", 8*60*60)
-	var wantStart int64
+	now := time.Date(2026, time.September, 1, 21, 0, 0, 0, location)
+	today := time.Date(2026, time.September, 1, 0, 0, 0, 0, location)
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != summaryPath {
 			t.Errorf("path = %q, want %q", request.URL.Path, summaryPath)
@@ -21,34 +24,56 @@ func TestFetchUsageReadsDashboardSummary(t *testing.T) {
 		if got := request.Header.Get("Authorization"); got != "Bearer fixture-admin-key" {
 			t.Errorf("Authorization = %q", got)
 		}
-		raw := request.URL.Query().Get("today_start_ms")
-		start, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || start != wantStart {
-			t.Errorf("today_start_ms = %q, want %d", raw, wantStart)
+		start, err := strconv.ParseInt(request.URL.Query().Get("today_start_ms"), 10, 64)
+		if err != nil {
+			t.Errorf("today_start_ms parse error: %v", err)
+			return
 		}
+		end, err := strconv.ParseInt(request.URL.Query().Get("now_ms"), 10, 64)
+		if err != nil {
+			t.Errorf("now_ms parse error: %v", err)
+			return
+		}
+		day := time.UnixMilli(start).In(location)
+		offset := int(day.Sub(today.AddDate(0, 0, -6)) / (24 * time.Hour))
+		if offset < 0 || offset > 6 {
+			t.Errorf("unexpected window start %s", day)
+		}
+		if offset == 6 && end != now.UnixMilli() {
+			t.Errorf("today now_ms = %d, want %d", end, now.UnixMilli())
+		}
+		requests.Add(1)
 		response.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(response).Encode(map[string]any{
-			"today": map[string]any{"total_tokens": 61635795, "total_cost": 36.89079273},
+			"today": map[string]any{
+				"total_tokens": 1000 * (offset + 1),
+				"total_cost":   float64(offset+1) + 0.25,
+			},
 		})
 	}))
 	defer server.Close()
-
-	now := time.Now().In(location)
-	wantStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).UnixMilli()
 
 	client, err := NewClient(server.URL, "fixture-admin-key", 2*time.Second, location)
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
+	client.now = func() time.Time { return now }
+
 	usage, err := client.FetchUsage(context.Background())
 	if err != nil {
 		t.Fatalf("FetchUsage() error = %v", err)
 	}
-	if usage.TodayTokens != 61635795 {
-		t.Fatalf("TodayTokens = %d, want 61635795", usage.TodayTokens)
+	if requests.Load() != 7 {
+		t.Fatalf("collector requests = %d, want 7", requests.Load())
 	}
-	if usage.TodayCost < 36.89 || usage.TodayCost > 36.90 {
-		t.Fatalf("TodayCost = %v, want ~36.89", usage.TodayCost)
+	if usage.TodayTokens != 7000 {
+		t.Fatalf("TodayTokens = %d, want 7000", usage.TodayTokens)
+	}
+	if len(usage.Days) != 7 || usage.Days[0].Date != "2026-08-26" || usage.Days[6].Date != "2026-09-01" {
+		t.Fatalf("Days = %#v", usage.Days)
+	}
+	if usage.Days[0].Tokens != 1000 || usage.Days[6].Tokens != 7000 {
+		t.Fatalf("day tokens = %#v", usage.Days)
 	}
 	if usage.Currency != "$" || usage.Source != usageSource {
 		t.Fatalf("Currency/Source = %q/%q", usage.Currency, usage.Source)
