@@ -32,12 +32,16 @@ OAuth access token、refresh token、CLIProxyAPI management key、`auth_index` �
 | Claude | 5h、7d、模型/功能限定窗口 | `CLAUDE` |
 | Gemini CLI | Pro、Flash 及其他 bucket | `GEMINI` |
 | Antigravity | 5h、weekly 及 quota-summary bucket | 并入 `GEMINI` |
+| Kimi | 5h（300 分钟）与 7d 窗口 | `KIMI` |
+| xAI / Grok | Grok Build 共享周额度 | `GROK` |
 
 `GET /api/v1/quota` 可见 CLIProxyAPI 中其他被明确标记为 OAuth 的 provider；尚无已核验额度适配器时，它们会以 `unknown` 和警告呈现，不会伪造 `0%`。800x480 画面默认显示 `CODEX` / `GROK` / `KIMI` 三行，可通过 `DISPLAY_PROVIDERS` 改成任意最多 5 个订阅类型（例如 `codex,claude,google`）。Gemini CLI 与 Antigravity 可用 `google` 或 `gemini-cli+antigravity:GEMINI` 合并到同一行。
 
 主机对原始 email 做如 `j***@example.com` 的遮罩。CLIProxyAPI 中显式配置的 `label` / `note` 被视为操作者选定的显示别名，会截断后出现在 JSON API 中；不要在该字段放敏感信息。当前画面不显示账号名或别名。
 
-配置了 CPAMP 用量采集后，画面下半部分显示近 7 日 token 用量与 API 折合价格柱状图；今日汇总会出现在底栏。
+配置了 CPAMP 用量采集后，画面下半部分以终端风总量卡显示近 7 日 token 总量与 API 折合价格；没有可验证的按日数据时明确显示 `UNAVAILABLE`。
+
+Headless Chromium 截图会在主机端做一次无抖动量化，最终 PNG 只包含 Spectra 6 的理论黑、白、黄、红、蓝、绿六色。PhotoFrame v2.18 会把这种 800x480 PNG 识别为已预处理图片，跳过设备端 tone mapping 与 dithering，避免文字抗锯齿灰阶扩散成彩色噪点。
 
 ## 硬件前提
 
@@ -240,7 +244,7 @@ PhotoFrame 上游的 `/api/config` 当前没有认证，并会在 GET 响应中�
 - 本服务到 CLIProxyAPI management endpoint 的 HTTP client 不跟随重定向。但 CLIProxyAPI 内部 `api-call` 当前仍使用 Go 默认 redirect policy，本服务看不到最终 URL。高安全部署应给 CLIProxyAPI 配置出站 allowlist/防火墙，并关闭内层重定向。
 - Claude/Codex 的被动 Header 回退是带 `observed_at` 的最近观测，不是当前时刻额度的强证明。超过 `PASSIVE_MAX_AGE` 后不再使用。
 - 当前 E6 画面只显示 `DISPLAY_PROVIDERS` 配置的订阅行（默认三行）；JSON API 的 provider/account 范围更广。
-- 近 7 日柱状图依赖 cpa-manager-plus 的 `dashboard/summary` 按日窗口查询；采集器不可用时画面保留上次成功数据或显示 unavailable。
+- 近 7 日总量卡依赖 cpa-manager-plus 的 `dashboard/summary` 按日窗口查询；采集器不可用或没有按日数据时显示 `UNAVAILABLE`，不会用 today 字段伪造 7 日总量。
 - 本地 fixture 测试能证明解析器与已核对契约一致，但不能代替使用者当前账号、当前 CLIProxyAPI 版本和真机硬件的现场验证。
 
 契约来源、核验 commit、内部端点与降级策略见 [docs/research.md](docs/research.md)。

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func TestRenderHTMLProducesDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderHTML() error = %v", err)
 	}
-	for _, needle := range []string{"AI QUOTA", "CODEX", "<style>", "bar-fill", "chart-bar", "7d"} {
+	for _, needle := range []string{"ai-quota", "CODEX", "<style>", "bar-fill", "usage-card", "7d"} {
 		if !strings.Contains(html, needle) {
 			t.Fatalf("renderHTML() missing %q", needle)
 		}
@@ -65,6 +66,16 @@ func TestRenderProducesExpectedPNGDimensions(t *testing.T) {
 	}
 	if got := image.Bounds().Dy(); got != Height {
 		t.Fatalf("PNG height = %d, want %d", got, Height)
+	}
+	allowed := theoreticalColorSet()
+	for y := image.Bounds().Min.Y; y < image.Bounds().Max.Y; y++ {
+		for x := image.Bounds().Min.X; x < image.Bounds().Max.X; x++ {
+			pixel := color.NRGBAModel.Convert(image.At(x, y)).(color.NRGBA)
+			rgb := RGB{R: pixel.R, G: pixel.G, B: pixel.B}
+			if pixel.A != 255 || !allowed[rgb] {
+				t.Fatalf("rendered pixel (%d,%d) = %#v alpha=%d, want opaque theoretical E6 color", x, y, rgb, pixel.A)
+			}
+		}
 	}
 }
 
@@ -298,8 +309,10 @@ func TestWritePreviewPNG(t *testing.T) {
 	snapshot.Accounts[0].Windows[0].Source = "demo"
 	snapshot.Accounts = append(snapshot.Accounts,
 		quota.Account{
-			Provider: "xai", Name: "w***@example.com", Status: "unknown", Stale: true,
-			Warning: "no verified quota adapter", Windows: []quota.Window{},
+			Provider: "xai", Name: "w***@example.com", Status: "low",
+			Windows: []quota.Window{
+				{ID: "7d", Label: "7d", RemainingPercent: quota.Percent(5), ResetsAt: snapshot.Accounts[0].Windows[0].ResetsAt, Source: "demo"},
+			},
 		},
 		quota.Account{
 			Provider: "kimi", Name: "kimi", Plan: "advanced", Status: "ok",

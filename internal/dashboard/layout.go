@@ -15,6 +15,7 @@ type displayWindow struct {
 }
 
 type displayRow struct {
+	group    string
 	provider string
 	detail   string
 	status   string
@@ -46,7 +47,7 @@ func aggregateRows(accounts []quota.Account, providers []DisplayProvider) []disp
 			}
 		}
 		if len(matching) == 0 {
-			rows = append(rows, displayRow{provider: provider.Label, detail: "No OAuth account", status: "missing"})
+			rows = append(rows, displayRow{group: provider.Group, provider: provider.Label, detail: "No OAuth account", status: "missing"})
 			continue
 		}
 		effective := matching
@@ -87,6 +88,7 @@ func aggregateRows(accounts []quota.Account, providers []DisplayProvider) []disp
 			}
 		}
 		rows = append(rows, displayRow{
+			group:    provider.Group,
 			provider: provider.Label,
 			detail:   detail,
 			status:   status,

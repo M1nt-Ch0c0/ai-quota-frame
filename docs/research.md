@@ -2,7 +2,7 @@
 
 本文记录本项目实现时实际核验的源码版本，并区分官方管理能力、供应商内部接口与被动观测。硬件板型和显示规格不在本文作推断，以项目 [README](../README.md) 的最终硬件章节为准。
 
-核验日期：2026-08-30。
+核验日期：2026-09-02。
 
 ## 结论
 
@@ -22,6 +22,7 @@ CLIProxyAPI 没有一个可以主动返回所有供应商订阅余额的统一 `
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `0bd1d439751478771c45d3d0895a6a9760554bf4` | Apache-2.0 | Google Code Assist `retrieveUserQuota` 请求与 bucket 字段的官方客户端证据 |
 | [CLI Proxy API Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center)（CPAMC） | `d249ff008e0bc2803deb23fb3e2c62418a1e8d17` | MIT | Claude、Codex、Antigravity 多端点调用和解析的交叉证据 |
 | [CLIProxyAPI Quota Inspector](https://github.com/AllenReder/CLIProxyAPI-Quota-Inspector) | `1895bc54d0cbdd3b73ac85b3e535b23b7481a1a0` | MIT | CLIProxyAPI `api-call` 错误处理及 Gemini 调用的社区参考 |
+| [Grok Build](https://github.com/xai-org/grok-build) | `bb7f39d5858cbf5e00de639367f59debbdcb0138` | Apache-2.0 | xAI 官方客户端 billing URL、headers 与周额度响应字段的主证据 |
 
 这些仓库用于阅读契约和交叉验证。本项目不因引用其行为说明而获得供应商内部接口的稳定性保证；若后续直接复制源码或资源，必须同时保留对应许可证和版权声明。
 
@@ -127,6 +128,21 @@ CPAMC 当前尝试三路 `retrieveUserQuotaSummary`，并在需要时调用 dail
 
 Quota Inspector 的核验版本仍主要使用 `fetchAvailableModels` 处理 Antigravity，而非 CPAMC 的 `retrieveUserQuotaSummary`；因此它在 Antigravity 契约上已经落后，只能作为 Gemini 与 CLIProxyAPI 错误处理参考。相关实现见 [`providers.go`](https://github.com/AllenReder/CLIProxyAPI-Quota-Inspector/blob/1895bc54d0cbdd3b73ac85b3e535b23b7481a1a0/providers.go#L489-L605)。
 
+### xAI / Grok
+
+xAI 官方 Grok Build 客户端通过 CLI chat proxy 查询当前共享额度：
+
+```text
+GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
+Authorization: Bearer $TOKEN$
+X-XAI-Token-Auth: xai-grok-cli
+x-userid: <OAuth subject>
+```
+
+官方客户端优先读取 `config.creditUsagePercent`，并从 `config.currentPeriod.type/start/end` 判断 weekly 或 monthly 周期；旧响应才回退到 `monthlyLimit` / `used`。证据见 Grok Build 的 [`billing.rs`](https://github.com/xai-org/grok-build/blob/bb7f39d5858cbf5e00de639367f59debbdcb0138/crates/codegen/xai-grok-shell/src/extensions/billing.rs) 与 [`config.rs`](https://github.com/xai-org/grok-build/blob/bb7f39d5858cbf5e00de639367f59debbdcb0138/crates/codegen/xai-grok-shell/src/agent/config.rs)。CLIProxyAPI 自身也把 OAuth 默认流量指向同一 `https://cli-chat-proxy.grok.com/v1` 基址，见 [`types.go`](https://github.com/router-for-me/CLIProxyAPI/blob/v7.2.145/internal/auth/xai/types.go)。
+
+CLIProxyAPI 的 auth-file 列表不会暴露 xAI `sub`，因此本项目通过同一受保护 management API 的 auth-file download 读取该非秘密标识；access token 仍只由 `api-call` 的 `$TOKEN$` 占位符注入，不进入归一化快照或相框请求。该 billing 路径属于官方客户端使用的内部契约，不是公开稳定的 xAI 计费 API。
+
 ## 漂移与降级策略
 
 - 上游 host、path、method 和必要 headers 必须由主机代码硬编码白名单；相框请求不得提供或覆盖它们。
@@ -135,7 +151,7 @@ Quota Inspector 的核验版本仍主要使用 `fetchAvailableModels` 处理 Ant
 - 主动结果标记为 `oauth_internal_endpoint`，Header 回退标记为 `cliproxy_headers`，并保留 `data_updated_at`、`observed_at` 或 stale 信息。
 - 对多 host fallback 只允许预先审计过的固定列表，不接受相框传入或覆盖的上游 URL。当前主机到 CLIProxyAPI 的 HTTP client 会拒绝 management endpoint 重定向；但 CLIProxyAPI `api-call` 内部仍使用 Go 默认 redirect policy，响应也不返回最终 URL，因此本服务无法观察或强制供应商侧“完全不跟随重定向”。Go 会阻止向无关域名转发 `Authorization` 等敏感 Header，但同 host/子域规则仍由 CLIProxyAPI 执行。高安全部署应给 CLIProxyAPI 增加 `CheckRedirect: http.ErrUseLastResponse`（或等价开关），并用出站防火墙只允许本文列出的供应商 host。
 - 对接口路径、User-Agent、请求 metadata、bucket schema 建立固定 fixture 测试；升级上述依赖 commit 时重新核验，不从旧文档推断新版本行为。
-- Kimi、xAI 等尚无本项目已核验契约的 provider 应显示“OAuth 已连接，额度不可用”，而不是静默伪造百分比。
+- 尚无本项目已核验契约的 provider 应显示“OAuth 已连接，额度不可用”，而不是静默伪造百分比。
 
 ## 安全边界
 

@@ -8,11 +8,10 @@
 </head>
 <body>
   <div class="frame">
-    <aside class="accent"></aside>
-
     <header class="header">
       <div class="header-left">
-        <h1>AI QUOTA</h1>
+        <span class="prompt-dollar">$</span>
+        <h1>ai-quota</h1>
         <span class="badge badge-{{.StatusClass}}">{{.StatusText}}</span>
       </div>
       <div class="header-right">{{.UpdatedText}}</div>
@@ -21,7 +20,7 @@
     <main class="rows rows-{{.RowCount}}">
       {{range .Rows}}
       <section class="row row-{{.StatusClass}}">
-        <div class="row-accent"></div>
+        {{.Logo}}
         <div class="row-meta">
           <div class="provider-line">
             <span class="provider">{{.Provider}}</span>
@@ -44,48 +43,35 @@
             </div>
             {{end}}
           {{else}}
-            <div class="window window-empty">No quota window available</div>
+            <div class="window window-empty">-- no quota window available</div>
           {{end}}
         </div>
       </section>
       {{end}}
     </main>
 
-    <section class="chart-card">
-      {{if .Chart}}
-      <div class="chart-head">
-        <span class="chart-title">{{.Chart.Title}}</span>
-        <span class="chart-legend">
-          <span class="swatch swatch-tokens"></span> Tokens
-          <span class="swatch swatch-cost"></span> API $
-        </span>
-      </div>
-      <div class="chart">
-        {{range .Chart.Days}}
-        <div class="chart-day">
-          <div class="chart-bars">
-            <div class="chart-bar bar-tokens" style="height: {{.TokenHeight}}%;" title="{{.TokenTitle}}"></div>
-            <div class="chart-bar bar-cost" style="height: {{.CostHeight}}%;" title="{{.CostTitle}}"></div>
-          </div>
-          <div class="chart-label">{{.Label}}</div>
+    <section class="usage-card">
+      {{if .Usage}}
+      <div class="usage-title">$ usage --period=7d</div>
+      <div class="usage-metrics">
+        <div class="usage-metric">
+          <span class="usage-label">TOKENS</span>
+          <span class="usage-value">{{.Usage.Tokens}}</span>
         </div>
-        {{end}}
+        <div class="usage-metric">
+          <span class="usage-label">EST. API COST</span>
+          <span class="usage-value">{{.Usage.Cost}}</span>
+        </div>
       </div>
       {{else}}
-      <div class="chart-empty">7-day usage unavailable</div>
+      <div class="usage-unavailable">
+        <span>$ usage --period=7d</span>
+        <strong>UNAVAILABLE</strong>
+      </div>
       {{end}}
     </section>
 
     <footer class="stats">
-      {{if .Usage}}
-      <div class="stats-left">
-        <span class="stats-label">Today</span>
-        <span class="stats-tokens">{{.Usage.Tokens}}</span>
-        <span class="stats-cost">{{.Usage.Cost}}</span>
-      </div>
-      {{else}}
-      <div class="stats-left stats-unavailable">Usage data unavailable</div>
-      {{end}}
       <div class="stats-right stats-{{.FooterClass}}">{{.Footer}}</div>
     </footer>
   </div>

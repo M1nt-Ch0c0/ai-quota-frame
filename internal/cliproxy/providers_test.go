@@ -336,3 +336,40 @@ func TestFetchKimiRejectsMissingNumbersInsteadOfFabricatingZero(t *testing.T) {
 		t.Fatal("fetchKimi() succeeded on a response without any numeric quota fields")
 	}
 }
+
+func TestFetchXAIParsesOfficialBillingUsagePool(t *testing.T) {
+	body := providerFixtureBody(t, "xai_billing.json")
+	client := providerFixtureClient(t, func(request apiCallRequest) apiCallResponse {
+		if request.URL != xaiBillingURL {
+			t.Errorf("provider URL = %q, want %q", request.URL, xaiBillingURL)
+			return providerErrorResponse(http.StatusNotFound)
+		}
+		for key, want := range map[string]string{
+			"Authorization":            "Bearer $TOKEN$",
+			"X-XAI-Token-Auth":         "xai-grok-cli",
+			"x-userid":                 "fixture-user-id",
+			"x-grok-client-version":    xaiClientVersion,
+			"x-grok-client-identifier": "grok-shell",
+		} {
+			if got := request.Header[key]; got != want {
+				t.Errorf("%s header = %q, want %q", key, got, want)
+			}
+		}
+		return providerSuccessResponse(body)
+	})
+
+	windows, plan, err := client.fetchXAI(context.Background(), "xai-auth", map[string]any{"sub": "fixture-user-id"})
+	if err != nil {
+		t.Fatalf("fetchXAI() error = %v", err)
+	}
+	if plan != "supergrok" {
+		t.Fatalf("plan = %q, want supergrok", plan)
+	}
+	if len(windows) != 1 {
+		t.Fatalf("window count = %d, want 1", len(windows))
+	}
+	weekly := requireProviderWindow(t, windows, "7d")
+	assertProviderPercent(t, weekly.UsedPercent, 36.5, "Grok 7d used")
+	assertProviderPercent(t, weekly.RemainingPercent, 63.5, "Grok 7d remaining")
+	assertProviderReset(t, weekly.ResetsAt, "2026-09-06T00:00:00Z")
+}

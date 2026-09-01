@@ -23,10 +23,79 @@ const (
 	antigravitySandbox = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	antigravityURL     = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	kimiUsageURL       = "https://api.kimi.com/coding/v1/usages"
+	xaiBillingURL      = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+	xaiClientVersion   = "0.2.120"
 	activeQuotaSource  = "oauth_internal_endpoint"
 	passiveQuotaSource = "cliproxy_headers"
 )
 
+// fetchXAI reads the shared Grok usage pool exposed by the official Grok Build
+// billing client. Current consumer accounts report a weekly period and a used
+// percentage; older responses may expose the legacy monthly limit instead.
+func (client *Client) fetchXAI(ctx context.Context, authIndex string, entry map[string]any) ([]quota.Window, string, error) {
+	userID, err := client.xaiUserID(ctx, entry)
+	if err != nil {
+		return nil, "", err
+	}
+	response, err := client.apiCall(ctx, apiCallRequest{
+		AuthIndex: authIndex,
+		Method:    http.MethodGet,
+		URL:       xaiBillingURL,
+		Header: map[string]string{
+			"Authorization":            "Bearer $TOKEN$",
+			"Accept":                   "application/json",
+			"X-XAI-Token-Auth":         "xai-grok-cli",
+			"x-userid":                 userID,
+			"x-grok-client-version":    xaiClientVersion,
+			"x-grok-client-identifier": "grok-shell",
+		},
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	payload, err := parseJSONBody(response.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	config := mapValue(payload["config"])
+	if config == nil {
+		return nil, "", errors.New("Grok billing response contained no config")
+	}
+	used, ok := percentage(firstNonNil(config["creditUsagePercent"], config["credit_usage_percent"]))
+	if !ok {
+		limit, hasLimit := number(nested(firstNonNil(config["monthlyLimit"], config["monthly_limit"]), "val"))
+		legacyUsed, hasUsed := number(nested(config["used"], "val"))
+		if !hasLimit || limit <= 0 || !hasUsed || legacyUsed < 0 {
+			return nil, "", errors.New("Grok billing response contained no usable usage percentage")
+		}
+		used = legacyUsed / limit * 100
+		if used > 100 {
+			used = 100
+		}
+	}
+
+	period := mapValue(firstNonNil(config["currentPeriod"], config["current_period"]))
+	periodType := strings.ToUpper(strings.TrimSpace(firstString(period["type"])))
+	id, label := "period", "period"
+	switch {
+	case strings.Contains(periodType, "WEEKLY"):
+		id, label = "7d", "7d"
+	case strings.Contains(periodType, "MONTHLY"):
+		id, label = "30d", "30d"
+	}
+	resetValue := firstNonNil(period["end"], config["billingPeriodEnd"], config["billing_period_end"])
+	window := quota.Window{
+		ID:               id,
+		Label:            label,
+		UsedPercent:      quota.Percent(used),
+		RemainingPercent: quota.Percent(100 - used),
+		ResetsAt:         timeValue(resetValue, client.now()),
+		Source:           activeQuotaSource,
+	}
+	plan := strings.ToLower(strings.TrimSpace(firstString(payload["subscriptionTier"], payload["subscription_tier"])))
+	return []quota.Window{window}, plan, nil
+}
 
 // fetchKimi reads the Kimi For Coding quota. Verified live against
 // api.kimi.com on 2026-09-01: the response carries a top-level weekly usage
@@ -124,6 +193,17 @@ func (client *Client) fetchCodex(ctx context.Context, authIndex string, entry ma
 		URL:       codexUsageURL,
 		Header:    headers,
 	})
+	// The ChatGPT usage backend occasionally returns a transient gateway error.
+	// This is an idempotent GET, so one immediate retry avoids replacing a good
+	// on-screen snapshot with an ERROR row for a one-off proxy failure.
+	if err != nil && ctx.Err() == nil {
+		response, err = client.apiCall(ctx, apiCallRequest{
+			AuthIndex: authIndex,
+			Method:    http.MethodGet,
+			URL:       codexUsageURL,
+			Header:    headers,
+		})
+	}
 	if err != nil {
 		return nil, "", err
 	}

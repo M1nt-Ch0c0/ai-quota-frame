@@ -175,9 +175,9 @@ func (client *Client) Fetch(ctx context.Context) ([]quota.Account, []string, err
 	fetchErrors := make([]string, 0)
 	for _, account := range accounts {
 		if account.Error != "" {
-			fetchErrors = append(fetchErrors, fmt.Sprintf("%s %s: %s", account.Provider, account.Name, account.Error))
+			fetchErrors = append(fetchErrors, fmt.Sprintf("%s: %s", account.Provider, account.Error))
 		} else if account.Warning != "" && quotaProviderSupported(account.Provider) {
-			fetchErrors = append(fetchErrors, fmt.Sprintf("%s %s: %s", account.Provider, account.Name, account.Warning))
+			fetchErrors = append(fetchErrors, fmt.Sprintf("%s: %s", account.Provider, account.Warning))
 		}
 	}
 	return accounts, fetchErrors, nil
@@ -225,6 +225,8 @@ func (client *Client) fetchAccount(ctx context.Context, entry map[string]any) qu
 		windows, plan, err = client.fetchAntigravity(ctx, authIndex, entry)
 	case "kimi":
 		windows, plan, err = client.fetchKimi(ctx, authIndex)
+	case "xai":
+		windows, plan, err = client.fetchXAI(ctx, authIndex, entry)
 	default:
 		err = errors.New("quota adapter routing failed")
 	}
@@ -271,7 +273,7 @@ func opaqueAuthIdentity(authIndex string) string {
 
 func quotaProviderSupported(provider string) bool {
 	switch provider {
-	case "codex", "claude", "gemini-cli", "antigravity", "kimi":
+	case "codex", "claude", "gemini-cli", "antigravity", "kimi", "xai":
 		return true
 	default:
 		return false
@@ -286,6 +288,39 @@ func (client *Client) listAuthFiles(ctx context.Context) ([]map[string]any, erro
 		return nil, fmt.Errorf("list CLIProxyAPI auth files: %w", err)
 	}
 	return payload.Files, nil
+}
+
+// xaiUserID returns the non-secret account subject required by Grok's billing
+// endpoint. CLIProxyAPI intentionally omits it from the auth-file listing, so
+// read only that field through its authenticated download endpoint. Access and
+// refresh tokens remain inside CLIProxyAPI and are never returned to callers.
+func (client *Client) xaiUserID(ctx context.Context, entry map[string]any) (string, error) {
+	for _, candidate := range []any{
+		entry["sub"],
+		nested(entry, "metadata", "sub"),
+		nested(entry, "attributes", "sub"),
+	} {
+		if subject := strings.TrimSpace(firstString(candidate)); subject != "" {
+			return subject, nil
+		}
+	}
+
+	name := strings.TrimSpace(firstString(entry["name"]))
+	if name == "" {
+		return "", errors.New("xAI OAuth entry has no credential name")
+	}
+	var credential struct {
+		Subject string `json:"sub"`
+	}
+	path := "/v0/management/auth-files/download?name=" + url.QueryEscape(name)
+	if err := client.managementJSON(ctx, http.MethodGet, path, nil, &credential); err != nil {
+		return "", fmt.Errorf("read xAI OAuth account subject: %w", err)
+	}
+	subject := strings.TrimSpace(credential.Subject)
+	if subject == "" {
+		return "", errors.New("xAI OAuth credential has no account subject")
+	}
+	return subject, nil
 }
 
 func (client *Client) apiCall(ctx context.Context, request apiCallRequest) (apiCallResponse, error) {
