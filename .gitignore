@@ -1,0 +1,4 @@
+.env
+dist/
+coverage.out
+/ai-quota-frame

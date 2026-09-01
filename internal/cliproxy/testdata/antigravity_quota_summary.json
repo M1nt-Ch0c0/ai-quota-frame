@@ -1,0 +1,44 @@
+{
+  "groups": [
+    {
+      "displayName": "Gemini",
+      "description": "Gemini model quota",
+      "buckets": [
+        {
+          "bucketId": "gemini-pro-5h",
+          "displayName": "Gemini Pro 5h",
+          "window": "5h",
+          "remainingFraction": 0.64,
+          "resetTime": "2026-08-30T12:00:00Z"
+        },
+        {
+          "bucketId": "gemini-pro-weekly",
+          "displayName": "Gemini Pro weekly",
+          "window": "weekly",
+          "remainingFraction": 0.72,
+          "resetTime": "2026-09-05T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "displayName": "Claude",
+      "description": "Claude model quota",
+      "buckets": [
+        {
+          "bucketId": "claude-5h",
+          "displayName": "Claude 5h",
+          "window": "5h",
+          "remainingFraction": 0.4,
+          "resetTime": "2026-08-30T11:00:00Z"
+        },
+        {
+          "bucketId": "claude-weekly",
+          "displayName": "Claude weekly",
+          "window": "weekly",
+          "remainingFraction": 0.88,
+          "resetTime": "2026-09-06T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}

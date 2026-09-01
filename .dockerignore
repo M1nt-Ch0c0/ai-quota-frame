@@ -1,0 +1,5 @@
+.git
+.env
+dist
+coverage.out
+docs/preview.png

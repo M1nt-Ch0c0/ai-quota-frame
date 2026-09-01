@@ -1,0 +1,11 @@
+{
+  "cloudaicompanionProject": "fixture-project",
+  "currentTier": {
+    "id": "free-tier",
+    "name": "Free"
+  },
+  "paidTier": {
+    "id": "standard-tier",
+    "name": "Standard"
+  }
+}

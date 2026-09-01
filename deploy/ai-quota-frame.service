@@ -1,0 +1,32 @@
+[Unit]
+Description=AI quota dashboard for Waveshare PhotoPainter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=aiquota
+Group=aiquota
+WorkingDirectory=/opt/ai-quota-frame
+EnvironmentFile=/etc/ai-quota-frame.env
+ExecStart=/opt/ai-quota-frame/ai-quota-frame
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

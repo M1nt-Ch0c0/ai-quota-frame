@@ -1,0 +1,24 @@
+{
+  "codex": {
+    "provider": "codex",
+    "auth_index": "codex-fixture",
+    "quota": {
+      "observed_at": "2026-08-30T10:00:00Z",
+      "signals": {
+        "X-Codex-Primary-Used-Percent": "42",
+        "X-Codex-Primary-Reset-After-Seconds": "1800"
+      }
+    }
+  },
+  "claude": {
+    "provider": "claude",
+    "auth_index": "claude-fixture",
+    "quota": {
+      "observed_at": "2026-08-30T10:00:00Z",
+      "signals": {
+        "Anthropic-Ratelimit-Unified-5h-Utilization": "0.42",
+        "Anthropic-Ratelimit-Unified-5h-Reset-After-Seconds": "1800"
+      }
+    }
+  }
+}
