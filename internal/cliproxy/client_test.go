@@ -83,12 +83,12 @@ func TestPlanOfDoesNotTreatCredentialKindAsSubscriptionPlan(t *testing.T) {
 func TestUnsupportedOAuthProviderIsVisibleWithoutAnUpstreamCall(t *testing.T) {
 	client := &Client{}
 	account := client.fetchAccount(context.Background(), map[string]any{
-		"provider":     "xai",
+		"provider":     "unsupported-provider",
 		"account_type": "oauth",
 		"auth_index":   "secret-index",
 		"email":        "xavier@example.com",
 	})
-	if account.Provider != "xai" || account.Status != "unknown" || !account.Stale || account.Warning == "" {
+	if account.Provider != "unsupported-provider" || account.Status != "unknown" || !account.Stale || account.Warning == "" {
 		t.Fatalf("unsupported OAuth account = %#v", account)
 	}
 	if account.RetentionID == "" || strings.Contains(account.RetentionID, "secret-index") {
@@ -114,7 +114,7 @@ func TestFetchFiltersAPIKeysAndSerializesUnsupportedOAuthWithoutAPICall(t *testi
 						"email":        "api-key@example.com",
 					},
 					{
-						"provider":     "xai",
+						"provider":     "unsupported-provider",
 						"account_type": "oauth",
 						"auth_index":   "unsupported-oauth-auth-index",
 						"email":        "oauth@example.com",
@@ -150,7 +150,7 @@ func TestFetchFiltersAPIKeysAndSerializesUnsupportedOAuthWithoutAPICall(t *testi
 	if len(accounts) != 1 {
 		t.Fatalf("Fetch() account count = %d, want only the unsupported OAuth account", len(accounts))
 	}
-	if account := accounts[0]; account.Provider != "xai" || account.Status != "unknown" || !account.Stale || account.Warning == "" {
+	if account := accounts[0]; account.Provider != "unsupported-provider" || account.Status != "unknown" || !account.Stale || account.Warning == "" {
 		t.Fatalf("unsupported OAuth account = %#v", account)
 	}
 
@@ -161,7 +161,7 @@ func TestFetchFiltersAPIKeysAndSerializesUnsupportedOAuthWithoutAPICall(t *testi
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	serialized := string(payload)
-	if !strings.Contains(serialized, `"provider":"xai"`) {
+	if !strings.Contains(serialized, `"provider":"unsupported-provider"`) {
 		t.Fatalf("serialized aggregate omitted unsupported OAuth account: %s", payload)
 	}
 	for _, forbidden := range []string{"api-key@example.com", "api-key-auth-index", "unsupported-oauth-auth-index"} {
@@ -174,6 +174,37 @@ func TestFetchFiltersAPIKeysAndSerializesUnsupportedOAuthWithoutAPICall(t *testi
 func TestAntigravityKeepsProviderProvenance(t *testing.T) {
 	if got := providerOf(map[string]any{"provider": "antigravity"}); got != "antigravity" {
 		t.Fatalf("providerOf(antigravity) = %q", got)
+	}
+}
+
+func TestXAIUserIDReadsOnlySubjectFromProtectedAuthDownload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/v0/management/auth-files/download" {
+			t.Errorf("management request = %s %s", request.Method, request.URL.Path)
+			http.NotFound(response, request)
+			return
+		}
+		if got := request.URL.Query().Get("name"); got != "xai account.json" {
+			t.Errorf("download name = %q, want %q", got, "xai account.json")
+		}
+		if got := request.Header.Get("Authorization"); got != "Bearer management-key" {
+			t.Errorf("management Authorization = %q", got)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"sub":"fixture-user-id","access_token":"must-not-be-used-directly"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "management-key", time.Second)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	subject, err := client.xaiUserID(context.Background(), map[string]any{"name": "xai account.json"})
+	if err != nil {
+		t.Fatalf("xaiUserID() error = %v", err)
+	}
+	if subject != "fixture-user-id" {
+		t.Fatalf("xaiUserID() = %q, want fixture-user-id", subject)
 	}
 }
 

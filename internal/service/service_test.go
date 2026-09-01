@@ -328,6 +328,9 @@ func TestRetainingWindowsDoesNotMutateFetcherOwnedFailure(t *testing.T) {
 	if len(snapshot.Accounts[0].Windows) != 1 || snapshot.Accounts[0].Warning == "" {
 		t.Fatalf("service did not retain the old window independently: %#v", snapshot.Accounts[0])
 	}
+	if snapshot.Accounts[0].Status != "ok" || snapshot.Accounts[0].Error != "" || !snapshot.Accounts[0].Stale {
+		t.Fatalf("retained account status/error/stale = %q/%q/%v, want ok/empty/true", snapshot.Accounts[0].Status, snapshot.Accounts[0].Error, snapshot.Accounts[0].Stale)
+	}
 }
 
 func TestRetentionUsesHostOnlyIdentityWhenMaskedNamesCollide(t *testing.T) {

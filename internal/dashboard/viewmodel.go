@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"html/template"
 	"strings"
 	"time"
 
@@ -14,13 +15,13 @@ type frameData struct {
 	UpdatedText string
 	RowCount    int
 	Rows        []rowData
-	Chart       *chartData
 	Usage       *usageData
 	Footer      string
 	FooterClass string
 }
 
 type rowData struct {
+	Logo        template.HTML
 	Provider    string
 	Detail      string
 	Status      string
@@ -40,19 +41,6 @@ type windowData struct {
 type usageData struct {
 	Tokens string
 	Cost   string
-}
-
-type chartData struct {
-	Title string
-	Days  []chartDay
-}
-
-type chartDay struct {
-	Label       string
-	TokenHeight int
-	CostHeight  int
-	TokenTitle  string
-	CostTitle   string
 }
 
 func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers []DisplayProvider) frameData {
@@ -83,6 +71,7 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 			windows = append(windows, buildWindowData(window, location))
 		}
 		rows = append(rows, rowData{
+			Logo:        ProviderLogoSVG(row.group),
 			Provider:    row.provider,
 			Detail:      row.detail,
 			Status:      strings.ToUpper(row.status),
@@ -98,19 +87,13 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 		UpdatedText: updatedText,
 		RowCount:    len(rows),
 		Rows:        rows,
-		Chart:       buildChartData(snapshot.Usage, location),
+		Usage:       buildUsageData(snapshot.Usage),
 		Footer:      "Updates on change",
 		FooterClass: "muted",
 	}
 	if len(snapshot.Errors) > 0 {
 		data.Footer = compact(snapshot.Errors[0], 52)
 		data.FooterClass = "error"
-	}
-	if snapshot.Usage != nil {
-		data.Usage = &usageData{
-			Tokens: formatTokens(snapshot.Usage.TodayTokens) + " tok",
-			Cost:   fmt.Sprintf("%s%.2f", snapshot.Usage.Currency, snapshot.Usage.TodayCost),
-		}
 	}
 	return data
 }
@@ -152,7 +135,7 @@ func buildWindowData(window displayWindow, location *time.Location) windowData {
 	return data
 }
 
-func buildChartData(usage *quota.Usage, location *time.Location) *chartData {
+func buildUsageData(usage *quota.Usage) *usageData {
 	if usage == nil || len(usage.Days) == 0 {
 		return nil
 	}
@@ -160,54 +143,10 @@ func buildChartData(usage *quota.Usage, location *time.Location) *chartData {
 	if currency == "" {
 		currency = "$"
 	}
-	var maxTokens int64
-	var maxCost float64
-	days := make([]chartDay, 0, len(usage.Days))
-	for _, day := range usage.Days {
-		if day.Tokens > maxTokens {
-			maxTokens = day.Tokens
-		}
-		if day.Cost > maxCost {
-			maxCost = day.Cost
-		}
-		days = append(days, chartDay{
-			Label:      formatChartLabel(day.Date, location),
-			TokenTitle: formatTokens(day.Tokens) + " tok",
-			CostTitle:  fmt.Sprintf("%s%.2f", currency, day.Cost),
-		})
+	return &usageData{
+		Tokens: formatTokens(sumTokens(usage.Days)) + " tok",
+		Cost:   fmt.Sprintf("%s%.2f", currency, sumCost(usage.Days)),
 	}
-	for index, day := range usage.Days {
-		days[index].TokenHeight = barHeight(float64(day.Tokens), float64(maxTokens))
-		days[index].CostHeight = barHeight(day.Cost, maxCost)
-	}
-	return &chartData{
-		Title: fmt.Sprintf("7d  %s tok  %s%.2f", formatTokens(sumTokens(usage.Days)), currency, sumCost(usage.Days)),
-		Days:  days,
-	}
-}
-
-func formatChartLabel(value string, location *time.Location) string {
-	if parsed, err := time.ParseInLocation("2006-01-02", value, location); err == nil {
-		return parsed.Format("01-02")
-	}
-	if len(value) >= 5 {
-		return value[len(value)-5:]
-	}
-	return value
-}
-
-func barHeight(value, maximum float64) int {
-	if value <= 0 || maximum <= 0 {
-		return 0
-	}
-	height := int(value / maximum * 100)
-	if height < 2 {
-		return 2
-	}
-	if height > 100 {
-		return 100
-	}
-	return height
 }
 
 func sumTokens(days []quota.UsageDay) int64 {

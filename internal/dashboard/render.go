@@ -60,7 +60,22 @@ func (renderer *Renderer) Render(snapshot quota.Snapshot) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return screenshotHTML(html)
+	payload, err := screenshotHTML(html)
+	if err != nil {
+		return nil, err
+	}
+	quantized, err := QuantizeTheoreticalE6(payload)
+	if err != nil {
+		return nil, fmt.Errorf("quantize dashboard PNG: %w", err)
+	}
+	return quantized, nil
+}
+
+// RenderSixColor renders the dashboard to the exact theoretical Spectra 6
+// palette recognized by the PhotoFrame processed-PNG fast path. Render uses
+// this format by default so every production caller gets the no-dither image.
+func (renderer *Renderer) RenderSixColor(snapshot quota.Snapshot) ([]byte, error) {
+	return renderer.Render(snapshot)
 }
 
 func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {

@@ -244,7 +244,9 @@ func retainBestKnownAccountWindows(current, previous []quota.Account) []quota.Ac
 		account.LastFreshAt = cloneTime(old.LastFreshAt)
 		account.Stale = true
 		if account.Error != "" {
+			account.Status = quota.StatusForWindows(account.Windows)
 			account.Warning = "refresh failed; showing the previous successful quota snapshot"
+			account.Error = ""
 		} else {
 			account.Status = quota.StatusForWindows(account.Windows)
 			account.Warning = "active refresh failed; showing a newer previous quota snapshot"

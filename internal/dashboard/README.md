@@ -7,11 +7,13 @@
 | 文件 | 作用 |
 |---|---|
 | `templates/frame.html` | 页面结构与 `{{.字段}}` 数据绑定 |
-| `templates/frame.css` | 布局、颜色、字体；OAuth 行已缩小，为近 7 日柱状图留出空间 |
+| `templates/frame.css` | 终端风布局、六色样式、大字号和 7 日总量卡 |
 | `viewmodel.go` | 把 `quota.Snapshot` 转成模板数据 |
 | `providers.go` | `DISPLAY_PROVIDERS` 解析与默认订阅行 |
 | `layout.go` | 按配置的 provider 行聚合额度窗口 |
-| `render.go` | 模板 → Headless Chromium 截图 → PNG |
+| `logos.go` | 默认 provider 的纯黑白 inline SVG 与安全 fallback |
+| `palette.go` | 无抖动量化到 PhotoFrame fast path 所需的理论六色 |
+| `render.go` | 模板 → Headless Chromium 截图 → 理论六色 PNG |
 
 改 UI 时优先编辑 `frame.html` 和 `frame.css`。新增画面字段时改 `viewmodel.go`。增减默认订阅类型时改 `providers.go`。
 
@@ -26,9 +28,13 @@ codex:CODEX,kimi:KIMI,gemini-cli+antigravity:GEMINI
 
 空值使用默认 `codex,xai,kimi`（标签为 CODEX / GROK / KIMI）。
 
-## 近 7 日柱状图
+## 近 7 日总量卡
 
-每个日期两根柱：蓝色为 token，绿色为 API 折合价格。高度按 7 日内各自最大值归一化。无用量数据时显示 `7-day usage unavailable`。
+汇总 `usage.days[]` 的 token 与 API 折合价格，只显示两个大数字，不再绘制每日柱状图。`usage.days[]` 缺失时显示 `UNAVAILABLE`；不会用 today 字段代替 7 日数据。
+
+## 六色输出
+
+`Render()` 会把 Chromium 的抗锯齿截图以 nearest-color 方式量化到纯黑、纯白、纯黄、纯红、纯蓝、纯绿，且不做误差扩散。输出为 800×480、8-bit RGB、non-interlaced PNG，PhotoFrame v2.18 可直接走 processed-PNG fast path，避免设备再次抖动。
 
 ## 本地预览 HTML
 
