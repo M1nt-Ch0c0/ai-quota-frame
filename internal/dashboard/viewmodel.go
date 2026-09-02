@@ -34,8 +34,13 @@ type windowData struct {
 	Label        string
 	PercentText  string
 	PercentClass string
-	BarWidth     int
 	ResetText    string
+	Segments     []barSegmentData
+}
+
+type barSegmentData struct {
+	FillClass string
+	FillWidth int
 }
 
 type usageData struct {
@@ -115,15 +120,15 @@ func buildWindowData(window displayWindow, location *time.Location) windowData {
 		PercentText:  "--%",
 		PercentClass: "muted",
 		ResetText:    "Reset --",
+		Segments:     buildBarSegments(window.remaining),
 	}
 	if window.remaining != nil {
 		remaining := clamp(*window.remaining)
 		data.PercentText = fmt.Sprintf("%.0f%%", remaining)
-		data.BarWidth = int(remaining)
 		switch {
-		case remaining <= 20:
+		case remaining < 10:
 			data.PercentClass = "urgent"
-		case remaining <= 45:
+		case remaining < 40:
 			data.PercentClass = "warn"
 		default:
 			data.PercentClass = "ok"
@@ -133,6 +138,34 @@ func buildWindowData(window displayWindow, location *time.Location) windowData {
 		data.ResetText = "Reset " + window.reset.In(location).Format("01-02 15:04")
 	}
 	return data
+}
+
+func buildBarSegments(remaining *float64) []barSegmentData {
+	segments := make([]barSegmentData, 10)
+	value := 0.0
+	if remaining != nil {
+		value = clamp(*remaining)
+	}
+	for index := range segments {
+		class := "ok"
+		switch {
+		case index == 0:
+			class = "urgent"
+		case index < 4:
+			class = "warn"
+		}
+
+		lower := float64(index * 10)
+		fill := int((value-lower)*10 + 0.5)
+		if fill < 0 {
+			fill = 0
+		}
+		if fill > 100 {
+			fill = 100
+		}
+		segments[index] = barSegmentData{FillClass: class, FillWidth: fill}
+	}
+	return segments
 }
 
 func buildUsageData(usage *quota.Usage) *usageData {

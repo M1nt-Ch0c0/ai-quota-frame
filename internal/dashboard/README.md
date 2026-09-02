@@ -32,6 +32,10 @@ codex:CODEX,kimi:KIMI,gemini-cli+antigravity:GEMINI
 
 汇总 `usage.days[]` 的 token 与 API 折合价格，只显示两个大数字，不再绘制每日柱状图。`usage.days[]` 缺失时显示 `UNAVAILABLE`；不会用 today 字段代替 7 日数据。
 
+## 额度进度条
+
+每个额度窗口显示 10 个带黑色边框的离散格，每格代表 10%。0–10% 的已用格为红色、10–40% 为黄色、40–100% 为绿色；不足整格时只硬切分填充当前格。空余部分保持白色，百分比文字继续作为非颜色提示。
+
 ## 六色输出
 
 `Render()` 会把 Chromium 的抗锯齿截图以 nearest-color 方式量化到纯黑、纯白、纯黄、纯红、纯蓝、纯绿，且不做误差扩散。输出为 800×480、8-bit RGB、non-interlaced PNG，PhotoFrame v2.18 可直接走 processed-PNG fast path，避免设备再次抖动。

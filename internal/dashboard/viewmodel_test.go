@@ -40,3 +40,46 @@ func TestBuildFrameDataDoesNotUseTodayFieldsWithoutDays(t *testing.T) {
 		t.Fatalf("Usage = %#v, want nil/unavailable when Days is empty", data.Usage)
 	}
 }
+
+func TestBuildBarSegmentsUseRetroThresholdColorsAndPartialCell(t *testing.T) {
+	remaining := 78.0
+	segments := buildBarSegments(&remaining)
+	if len(segments) != 10 {
+		t.Fatalf("segment count = %d, want 10", len(segments))
+	}
+	wantClasses := []string{"urgent", "warn", "warn", "warn", "ok", "ok", "ok", "ok", "ok", "ok"}
+	wantWidths := []int{100, 100, 100, 100, 100, 100, 100, 80, 0, 0}
+	for index := range segments {
+		if segments[index].FillClass != wantClasses[index] || segments[index].FillWidth != wantWidths[index] {
+			t.Fatalf("segment %d = %#v, want class=%q width=%d", index, segments[index], wantClasses[index], wantWidths[index])
+		}
+	}
+
+	five := 5.0
+	segments = buildBarSegments(&five)
+	if segments[0].FillClass != "urgent" || segments[0].FillWidth != 50 {
+		t.Fatalf("5%% first segment = %#v, want half-filled urgent cell", segments[0])
+	}
+	for index := 1; index < len(segments); index++ {
+		if segments[index].FillWidth != 0 {
+			t.Fatalf("5%% segment %d width = %d, want 0", index, segments[index].FillWidth)
+		}
+	}
+}
+
+func TestBuildWindowDataUsesRequestedTenAndFortyPercentThresholds(t *testing.T) {
+	for _, test := range []struct {
+		remaining float64
+		want      string
+	}{
+		{remaining: 9, want: "urgent"},
+		{remaining: 10, want: "warn"},
+		{remaining: 39, want: "warn"},
+		{remaining: 40, want: "ok"},
+	} {
+		data := buildWindowData(displayWindow{remaining: &test.remaining}, time.UTC)
+		if data.PercentClass != test.want {
+			t.Errorf("remaining %.0f class = %q, want %q", test.remaining, data.PercentClass, test.want)
+		}
+	}
+}

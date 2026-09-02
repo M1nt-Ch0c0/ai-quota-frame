@@ -41,6 +41,8 @@ OAuth access token、refresh token、CLIProxyAPI management key、`auth_index` �
 
 配置了 CPAMP 用量采集后，画面下半部分以终端风总量卡显示近 7 日 token 总量与 API 折合价格；没有可验证的按日数据时明确显示 `UNAVAILABLE`。
 
+每个额度窗口使用 10 格复古终端进度条，每格代表 10%：0–10% 区间为红色、10–40% 为黄色、40–100% 为绿色；当前格按实际百分比硬切分填充，不使用渐变或抖动。
+
 Headless Chromium 截图会在主机端做一次无抖动量化，最终 PNG 只包含 Spectra 6 的理论黑、白、黄、红、蓝、绿六色。PhotoFrame v2.18 会把这种 800x480 PNG 识别为已预处理图片，跳过设备端 tone mapping 与 dithering，避免文字抗锯齿灰阶扩散成彩色噪点。
 
 ## 硬件前提
