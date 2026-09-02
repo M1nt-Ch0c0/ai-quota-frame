@@ -193,21 +193,32 @@ html, body {
 .percent-urgent { color: var(--ink); }
 .percent-muted { color: var(--faint); }
 
-.bar-track {
+.bar-segments {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 3px;
   margin-top: 6px;
-  height: 8px;
+  height: 12px;
+}
+
+.bar-segment {
+  position: relative;
+  display: block;
+  min-width: 0;
+  height: 12px;
   border: 2px solid var(--ink);
   background: var(--track);
+  overflow: hidden;
 }
 
-.bar-fill {
+.bar-segment-fill {
+  display: block;
   height: 100%;
-  min-width: 0;
-  background: var(--ink);
 }
 
-.fill-warn { background: var(--ink); }
-.fill-urgent { background: var(--ink); }
+.fill-ok { background: var(--green); }
+.fill-warn { background: var(--yellow); }
+.fill-urgent { background: var(--red); }
 .fill-muted { background: var(--ink); }
 
 .window-reset {

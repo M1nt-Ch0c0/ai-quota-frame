@@ -36,8 +36,10 @@
                 <span class="window-label">{{.Label}}</span>
                 <span class="window-percent percent-{{.PercentClass}}">{{.PercentText}}</span>
               </div>
-              <div class="bar-track">
-                <div class="bar-fill fill-{{.PercentClass}}" style="width: {{.BarWidth}}%;"></div>
+              <div class="bar-segments" aria-hidden="true">
+                {{range .Segments}}
+                <span class="bar-segment"><span class="bar-segment-fill fill-{{.FillClass}}" style="width: {{.FillWidth}}%;"></span></span>
+                {{end}}
               </div>
               <div class="window-reset">{{.ResetText}}</div>
             </div>
