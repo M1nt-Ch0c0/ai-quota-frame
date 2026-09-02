@@ -39,7 +39,7 @@ OAuth access token、refresh token、CLIProxyAPI management key、`auth_index` �
 
 主机对原始 email 做如 `j***@example.com` 的遮罩。CLIProxyAPI 中显式配置的 `label` / `note` 被视为操作者选定的显示别名，会截断后出现在 JSON API 中；不要在该字段放敏感信息。当前画面不显示账号名或别名。
 
-配置了 CPAMP 用量采集后，画面下半部分以终端风总量卡显示近 7 日 token 总量与 API 折合价格；没有可验证的按日数据时明确显示 `UNAVAILABLE`。
+配置了 CPAMP 用量采集后，画面下半部分以紧凑的终端风面板显示近 7 日 token 柱状图，以及 TODAY、7DAY、PEAK 的 token 与 API 折合价格；没有可验证的按日数据时明确显示 `NO USAGE DATA`。
 
 每个额度窗口使用 10 格复古终端进度条，每格代表 10%：0–10% 区间为红色、10–40% 为黄色、40–100% 为绿色；当前格按实际百分比硬切分填充，不使用渐变或抖动。
 

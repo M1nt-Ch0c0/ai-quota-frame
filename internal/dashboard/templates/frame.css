@@ -231,7 +231,7 @@ html, body {
   color: var(--faint);
 }
 
-/* seven-day usage summary */
+/* compact seven-day usage panel */
 
 .usage-card {
   display: flex;
@@ -240,29 +240,69 @@ html, body {
   border: 2px solid var(--ink);
 }
 
-.usage-title {
-  display: flex;
-  flex: 0 0 202px;
-  align-items: center;
-  padding: 0 12px;
+.usage-history {
+  flex: 0 0 42%;
+  min-width: 0;
+  padding: 6px 8px 4px;
   border-right: 2px solid var(--ink);
-  font-size: 17px;
+}
+
+.usage-bars {
+  display: flex;
+  width: 100%;
+  height: 70px;
+}
+
+.usage-day {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.usage-bar-slot {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: flex-end;
+  border-bottom: 2px solid var(--ink);
+}
+
+.usage-bar {
+  display: block;
+  width: 100%;
+  background: var(--ink);
+}
+
+.usage-date {
+  height: 16px;
+  overflow: hidden;
+  padding-top: 3px;
+  border-right: 1px solid var(--ink);
+  font-size: 11px;
   font-weight: 700;
+  line-height: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.usage-day:last-child .usage-date {
+  border-right: 0;
 }
 
 .usage-metrics {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   flex: 1;
   min-width: 0;
 }
 
 .usage-metric {
   display: flex;
-  flex: 1;
   min-width: 0;
   flex-direction: column;
-  justify-content: center;
-  padding: 6px 14px;
+  justify-content: space-between;
+  padding: 7px 9px 6px;
 }
 
 .usage-metric + .usage-metric {
@@ -270,16 +310,40 @@ html, body {
 }
 
 .usage-label {
-  font-size: 14px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-label span {
+  margin-left: 3px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.usage-tokens {
+  overflow: hidden;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-tokens small {
+  font-size: 10px;
   font-weight: 700;
 }
 
-.usage-value {
-  margin-top: 5px;
+.usage-cost {
   overflow: hidden;
-  font-size: 28px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -295,7 +359,7 @@ html, body {
 }
 
 .usage-unavailable strong {
-  font-size: 24px;
+  font-size: 22px;
   letter-spacing: 0.08em;
 }
 

@@ -23,11 +23,31 @@ func TestBuildFrameDataSummarizesSevenDayUsage(t *testing.T) {
 	if data.Usage == nil {
 		t.Fatal("Usage = nil, want seven-day summary")
 	}
-	if data.Usage.Tokens != "4.6M tok" {
-		t.Fatalf("Usage.Tokens = %q, want %q", data.Usage.Tokens, "4.6M tok")
+	if data.Usage.Today.Tokens != "999" || data.Usage.Today.Cost != "€9.99" {
+		t.Fatalf("Usage.Today = %#v, want current usage values", data.Usage.Today)
 	}
-	if data.Usage.Cost != "€3.75" {
-		t.Fatalf("Usage.Cost = %q, want %q", data.Usage.Cost, "€3.75")
+	if data.Usage.SevenDay.Tokens != "4.6M" || data.Usage.SevenDay.Cost != "€3.75" {
+		t.Fatalf("Usage.SevenDay = %#v, want seven-day summary", data.Usage.SevenDay)
+	}
+	if data.Usage.Peak.Tokens != "3.4M" || data.Usage.Peak.Cost != "€2.50" || data.Usage.Peak.Note != "09-01" {
+		t.Fatalf("Usage.Peak = %#v, want peak day summary", data.Usage.Peak)
+	}
+	if len(data.Usage.Days) != 2 || data.Usage.Days[0].Height != 35 || data.Usage.Days[1].Height != 100 {
+		t.Fatalf("Usage.Days = %#v, want normalized compact chart", data.Usage.Days)
+	}
+}
+
+func TestBuildUsageDataKeepsOnlyLatestSevenDays(t *testing.T) {
+	days := make([]quota.UsageDay, 8)
+	for index := range days {
+		days[index] = quota.UsageDay{Date: time.Date(2026, time.January, index+1, 0, 0, 0, 0, time.UTC).Format("2006-01-02"), Tokens: int64(index + 1)}
+	}
+	data := buildUsageData(&quota.Usage{Currency: "$", Days: days})
+	if len(data.Days) != 7 || data.Days[0].Label != "01-02" || data.Days[6].Label != "01-08" {
+		t.Fatalf("Days = %#v, want latest seven dates", data.Days)
+	}
+	if data.SevenDay.Tokens != "35" || data.Peak.Note != "01-08" {
+		t.Fatalf("summary = %#v/%#v, want values based on latest seven days", data.SevenDay, data.Peak)
 	}
 }
 

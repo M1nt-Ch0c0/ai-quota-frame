@@ -44,6 +44,21 @@ type barSegmentData struct {
 }
 
 type usageData struct {
+	Days     []usageDayData
+	Today    usageMetricData
+	SevenDay usageMetricData
+	Peak     usageMetricData
+}
+
+type usageDayData struct {
+	Label  string
+	Height int
+	Title  string
+}
+
+type usageMetricData struct {
+	Label  string
+	Note   string
 	Tokens string
 	Cost   string
 }
@@ -176,10 +191,72 @@ func buildUsageData(usage *quota.Usage) *usageData {
 	if currency == "" {
 		currency = "$"
 	}
-	return &usageData{
-		Tokens: formatTokens(sumTokens(usage.Days)) + " tok",
-		Cost:   fmt.Sprintf("%s%.2f", currency, sumCost(usage.Days)),
+	days := usage.Days
+	if len(days) > 7 {
+		days = days[len(days)-7:]
 	}
+
+	var peak quota.UsageDay
+	var maxTokens int64
+	for _, day := range days {
+		if day.Tokens > maxTokens {
+			maxTokens = day.Tokens
+			peak = day
+		}
+	}
+
+	chartDays := make([]usageDayData, 0, len(days))
+	for _, day := range days {
+		chartDays = append(chartDays, usageDayData{
+			Label:  formatUsageDate(day.Date),
+			Height: usageBarHeight(day.Tokens, maxTokens),
+			Title:  formatTokens(day.Tokens) + " tok",
+		})
+	}
+
+	return &usageData{
+		Days: chartDays,
+		Today: usageMetricData{
+			Label:  "TODAY",
+			Tokens: formatTokens(usage.TodayTokens),
+			Cost:   fmt.Sprintf("%s%.2f", currency, usage.TodayCost),
+		},
+		SevenDay: usageMetricData{
+			Label:  "7DAY",
+			Tokens: formatTokens(sumTokens(days)),
+			Cost:   fmt.Sprintf("%s%.2f", currency, sumCost(days)),
+		},
+		Peak: usageMetricData{
+			Label:  "PEAK",
+			Note:   formatUsageDate(peak.Date),
+			Tokens: formatTokens(peak.Tokens),
+			Cost:   fmt.Sprintf("%s%.2f", currency, peak.Cost),
+		},
+	}
+}
+
+func formatUsageDate(value string) string {
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return parsed.Format("01-02")
+	}
+	if len(value) > 5 {
+		return value[len(value)-5:]
+	}
+	return value
+}
+
+func usageBarHeight(value, maximum int64) int {
+	if value <= 0 || maximum <= 0 {
+		return 0
+	}
+	height := int(float64(value) / float64(maximum) * 100)
+	if height < 4 {
+		return 4
+	}
+	if height > 100 {
+		return 100
+	}
+	return height
 }
 
 func sumTokens(days []quota.UsageDay) int64 {

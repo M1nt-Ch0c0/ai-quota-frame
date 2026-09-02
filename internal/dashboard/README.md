@@ -7,7 +7,7 @@
 | 文件 | 作用 |
 |---|---|
 | `templates/frame.html` | 页面结构与 `{{.字段}}` 数据绑定 |
-| `templates/frame.css` | 终端风布局、六色样式、大字号和 7 日总量卡 |
+| `templates/frame.css` | 终端风布局、六色样式、大字号和紧凑 7 日用量面板 |
 | `viewmodel.go` | 把 `quota.Snapshot` 转成模板数据 |
 | `providers.go` | `DISPLAY_PROVIDERS` 解析与默认订阅行 |
 | `layout.go` | 按配置的 provider 行聚合额度窗口 |
@@ -28,9 +28,9 @@ codex:CODEX,kimi:KIMI,gemini-cli+antigravity:GEMINI
 
 空值使用默认 `codex,xai,kimi`（标签为 CODEX / GROK / KIMI）。
 
-## 近 7 日总量卡
+## 近 7 日用量面板
 
-汇总 `usage.days[]` 的 token 与 API 折合价格，只显示两个大数字，不再绘制每日柱状图。`usage.days[]` 缺失时显示 `UNAVAILABLE`；不会用 today 字段代替 7 日数据。
+左侧把 `usage.days[]` 的最近 7 天 token 归一化成紧邻的纯黑柱状图，右侧以纯黑白三列显示 TODAY、7DAY 和 PEAK 的 token 与 API 折合价格。`usage.days[]` 缺失时显示 `NO USAGE DATA`；不会用 today 字段伪造 7 日数据。
 
 ## 额度进度条
 

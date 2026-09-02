@@ -54,21 +54,43 @@
 
     <section class="usage-card">
       {{if .Usage}}
-      <div class="usage-title">$ usage --period=7d</div>
+      <div class="usage-history" aria-label="7 day token history">
+        <div class="usage-bars">
+          {{range .Usage.Days}}
+          <div class="usage-day" title="{{.Title}}">
+            <div class="usage-bar-slot"><span class="usage-bar" style="height: {{.Height}}%;"></span></div>
+            <span class="usage-date">{{.Label}}</span>
+          </div>
+          {{end}}
+        </div>
+      </div>
       <div class="usage-metrics">
+        {{with .Usage.Today}}
         <div class="usage-metric">
-          <span class="usage-label">TOKENS</span>
-          <span class="usage-value">{{.Usage.Tokens}}</span>
+          <div class="usage-label">[{{.Label}}]</div>
+          <div class="usage-tokens">{{.Tokens}} <small>tok</small></div>
+          <div class="usage-cost">{{.Cost}}</div>
         </div>
+        {{end}}
+        {{with .Usage.SevenDay}}
         <div class="usage-metric">
-          <span class="usage-label">EST. API COST</span>
-          <span class="usage-value">{{.Usage.Cost}}</span>
+          <div class="usage-label">[{{.Label}}]</div>
+          <div class="usage-tokens">{{.Tokens}} <small>tok</small></div>
+          <div class="usage-cost">{{.Cost}}</div>
         </div>
+        {{end}}
+        {{with .Usage.Peak}}
+        <div class="usage-metric">
+          <div class="usage-label">[{{.Label}}] <span>{{.Note}}</span></div>
+          <div class="usage-tokens">{{.Tokens}} <small>tok</small></div>
+          <div class="usage-cost">{{.Cost}}</div>
+        </div>
+        {{end}}
       </div>
       {{else}}
       <div class="usage-unavailable">
         <span>$ usage --period=7d</span>
-        <strong>UNAVAILABLE</strong>
+        <strong>NO USAGE DATA</strong>
       </div>
       {{end}}
     </section>
