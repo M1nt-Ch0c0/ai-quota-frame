@@ -52,6 +52,7 @@ type usageData struct {
 
 type usageDayData struct {
 	Label  string
+	Value  string
 	Height int
 	Title  string
 }
@@ -112,7 +113,7 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 		FooterClass: "muted",
 	}
 	if len(snapshot.Errors) > 0 {
-		data.Footer = compact(snapshot.Errors[0], 52)
+		data.Footer = compact(snapshot.Errors[0], 34)
 		data.FooterClass = "error"
 	}
 	return data
@@ -209,6 +210,7 @@ func buildUsageData(usage *quota.Usage) *usageData {
 	for _, day := range days {
 		chartDays = append(chartDays, usageDayData{
 			Label:  formatUsageDate(day.Date),
+			Value:  formatTokens(day.Tokens),
 			Height: usageBarHeight(day.Tokens, maxTokens),
 			Title:  formatTokens(day.Tokens) + " tok",
 		})

@@ -38,6 +38,7 @@ html, body {
 /* header */
 
 .header {
+  position: relative;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -82,6 +83,22 @@ html, body {
   font-weight: 700;
   color: var(--soft);
 }
+
+.header-status {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  max-width: 260px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.header-status::before { content: "# "; }
 
 /* provider rows */
 
@@ -235,7 +252,7 @@ html, body {
 
 .usage-card {
   display: flex;
-  height: 86px;
+  height: 118px;
   margin-top: 8px;
   border: 2px solid var(--ink);
 }
@@ -250,7 +267,7 @@ html, body {
 .usage-bars {
   display: flex;
   width: 100%;
-  height: 70px;
+  height: 102px;
 }
 
 .usage-day {
@@ -258,6 +275,16 @@ html, body {
   flex: 1 1 0;
   min-width: 0;
   flex-direction: column;
+}
+
+.usage-bar-value {
+  height: 17px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .usage-bar-slot {
@@ -301,8 +328,9 @@ html, body {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 7px 9px 6px;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 9px;
 }
 
 .usage-metric + .usage-metric {
@@ -311,7 +339,7 @@ html, body {
 
 .usage-label {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 14px;
   letter-spacing: 0.03em;
@@ -327,7 +355,7 @@ html, body {
 
 .usage-tokens {
   overflow: hidden;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 24px;
   text-overflow: ellipsis;
@@ -341,7 +369,7 @@ html, body {
 
 .usage-cost {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 15px;
   text-overflow: ellipsis;
@@ -362,26 +390,6 @@ html, body {
   font-size: 22px;
   letter-spacing: 0.08em;
 }
-
-/* footer */
-
-.stats {
-  display: flex;
-  justify-content: flex-end;
-  height: 32px;
-  padding-top: 7px;
-}
-
-.stats-right {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 15px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stats-right::before { content: "# "; }
 
 .stats-muted { color: var(--faint); }
 .stats-error { color: var(--red); }

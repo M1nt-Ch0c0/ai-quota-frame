@@ -30,7 +30,7 @@ codex:CODEX,kimi:KIMI,gemini-cli+antigravity:GEMINI
 
 ## 近 7 日用量面板
 
-左侧把 `usage.days[]` 的最近 7 天 token 归一化成紧邻的纯黑柱状图，右侧以纯黑白三列显示 TODAY、7DAY 和 PEAK 的 token 与 API 折合价格。`usage.days[]` 缺失时显示 `NO USAGE DATA`；不会用 today 字段伪造 7 日数据。
+左侧把 `usage.days[]` 的最近 7 天 token 归一化成紧邻的纯黑柱状图，并在柱上方以一位小数和 `k` / `M` / `B` 单位标值；右侧以纯黑白三列显示 TODAY、7DAY 和 PEAK 的 token 与 API 折合价格。状态文字位于页眉正中，底部空间全部留给用量面板。`usage.days[]` 缺失时显示 `NO USAGE DATA`；不会用 today 字段伪造 7 日数据。
 
 ## 额度进度条
 
