@@ -28,7 +28,7 @@ func TestRenderHTMLProducesDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderHTML() error = %v", err)
 	}
-	for _, needle := range []string{"ai-quota", "CODEX", "<style>", "bar-segment-fill", "usage-history", "[TODAY]", "[7DAY]", "[PEAK]"} {
+	for _, needle := range []string{"ai-quota", "CODEX", "<style>", "bar-segment-fill", "header-status", "usage-history", "4.2M", "[TODAY]", "[7DAY]", "[PEAK]"} {
 		if !strings.Contains(html, needle) {
 			t.Fatalf("renderHTML() missing %q", needle)
 		}

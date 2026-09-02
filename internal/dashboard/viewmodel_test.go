@@ -35,6 +35,24 @@ func TestBuildFrameDataSummarizesSevenDayUsage(t *testing.T) {
 	if len(data.Usage.Days) != 2 || data.Usage.Days[0].Height != 35 || data.Usage.Days[1].Height != 100 {
 		t.Fatalf("Usage.Days = %#v, want normalized compact chart", data.Usage.Days)
 	}
+	if data.Usage.Days[0].Value != "1.2M" || data.Usage.Days[1].Value != "3.4M" {
+		t.Fatalf("Usage day values = %#v, want one-decimal compact labels", data.Usage.Days)
+	}
+}
+
+func TestFormatTokensUsesOneDecimalScaleSuffix(t *testing.T) {
+	for _, test := range []struct {
+		value int64
+		want  string
+	}{
+		{value: 1_400, want: "1.4k"},
+		{value: 2_500_000, want: "2.5M"},
+		{value: 1_000_000_000, want: "1.0B"},
+	} {
+		if got := formatTokens(test.value); got != test.want {
+			t.Errorf("formatTokens(%d) = %q, want %q", test.value, got, test.want)
+		}
+	}
 }
 
 func TestBuildUsageDataKeepsOnlyLatestSevenDays(t *testing.T) {

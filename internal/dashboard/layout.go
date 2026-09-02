@@ -175,7 +175,7 @@ func statusRank(status string) int {
 func formatTokens(value int64) string {
 	switch {
 	case value >= 1_000_000_000:
-		return fmt.Sprintf("%.2fB", float64(value)/1e9)
+		return fmt.Sprintf("%.1fB", float64(value)/1e9)
 	case value >= 1_000_000:
 		return fmt.Sprintf("%.1fM", float64(value)/1e6)
 	case value >= 1_000:
