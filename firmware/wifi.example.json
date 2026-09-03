@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "networks": [
+    {"ssid": "Home-2.4G", "password": "replace-home-password"},
+    {"ssid": "Office-2.4G", "password": "replace-office-password"},
+    {"ssid": "Phone-Hotspot", "password": "replace-hotspot-password"}
+  ]
+}

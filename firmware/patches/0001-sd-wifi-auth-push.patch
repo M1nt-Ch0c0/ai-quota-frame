@@ -1,0 +1,1720 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ce3ff9a..43ce789 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -23,6 +23,9 @@ endif()
+ 
+ message(STATUS "Firmware version: ${FIRMWARE_VERSION}")
+ 
++# Keep the app descriptor/serial banner aligned with the custom build identity.
++set(PROJECT_VER "${FIRMWARE_VERSION}")
++
+ add_compile_options(-Wno-missing-field-initializers)
+ add_compile_definitions(FIRMWARE_VERSION="${FIRMWARE_VERSION}")
+ 
+diff --git a/host_tests/CMakeLists.txt b/host_tests/CMakeLists.txt
+index ccbf5df..2d6c5df 100644
+--- a/host_tests/CMakeLists.txt
++++ b/host_tests/CMakeLists.txt
+@@ -128,3 +128,23 @@ target_link_libraries(
+ )
+ 
+ gtest_discover_tests(display_flow_test)
++
++set(ENABLE_CJSON_TEST OFF CACHE BOOL "" FORCE)
++set(ENABLE_CJSON_UTILS OFF CACHE BOOL "" FORCE)
++FetchContent_Declare(cjson GIT_REPOSITORY https://github.com/DaveGamble/cJSON.git GIT_TAG v1.7.19)
++FetchContent_MakeAvailable(cjson)
++add_executable(wifi_profiles_test test_wifi_profiles.cpp ../main/wifi_profiles.c)
++target_include_directories(wifi_profiles_test PRIVATE ../main ${cjson_SOURCE_DIR})
++target_link_libraries(wifi_profiles_test GTest::gtest_main cjson)
++gtest_discover_tests(wifi_profiles_test)
++
++add_executable(push_auth_test test_push_auth.cpp ../main/push_auth.c)
++target_compile_definitions(push_auth_test PRIVATE FS_MOUNT_POINT="pf_auth_storage")
++target_include_directories(push_auth_test PRIVATE auth_stubs stubs ../main)
++target_link_libraries(push_auth_test GTest::gtest_main)
++gtest_discover_tests(push_auth_test)
++
++add_executable(api_guard_test test_api_guard.cpp ../main/api_guard.c)
++target_include_directories(api_guard_test PRIVATE auth_stubs stubs ../main)
++target_link_libraries(api_guard_test GTest::gtest_main)
++gtest_discover_tests(api_guard_test)
+diff --git a/host_tests/auth_stubs/esp_http_server.h b/host_tests/auth_stubs/esp_http_server.h
+new file mode 100644
+index 0000000..ca6e8a4
+--- /dev/null
++++ b/host_tests/auth_stubs/esp_http_server.h
+@@ -0,0 +1,29 @@
++#pragma once
++#include <stddef.h>
++
++#include "esp_err.h"
++typedef void *httpd_handle_t;
++typedef enum { HTTP_GET, HTTP_POST, HTTP_PUT, HTTP_DELETE, HTTP_PATCH } httpd_method_t;
++typedef struct {
++    const char *uri;
++    httpd_method_t method;
++    void *user_ctx;
++    const char *test_auth;
++} httpd_req_t;
++typedef struct {
++    const char *uri;
++    httpd_method_t method;
++    esp_err_t (*handler)(httpd_req_t *);
++    void *user_ctx;
++} httpd_uri_t;
++#ifdef __cplusplus
++extern "C" {
++#endif
++esp_err_t httpd_register_uri_handler(httpd_handle_t, const httpd_uri_t *);
++esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *, const char *, char *, size_t);
++esp_err_t httpd_resp_set_status(httpd_req_t *, const char *);
++esp_err_t httpd_resp_set_hdr(httpd_req_t *, const char *, const char *);
++esp_err_t httpd_resp_sendstr(httpd_req_t *, const char *);
++#ifdef __cplusplus
++}
++#endif
+diff --git a/host_tests/auth_stubs/nvs.h b/host_tests/auth_stubs/nvs.h
+new file mode 100644
+index 0000000..daaa67a
+--- /dev/null
++++ b/host_tests/auth_stubs/nvs.h
+@@ -0,0 +1,18 @@
++#pragma once
++#include <stddef.h>
++
++#include "esp_err.h"
++#define NVS_READWRITE 1
++#define ESP_ERR_NVS_NOT_FOUND 0x1102
++typedef int nvs_handle_t;
++#ifdef __cplusplus
++extern "C" {
++#endif
++esp_err_t nvs_open(const char *, int, nvs_handle_t *);
++esp_err_t nvs_get_str(nvs_handle_t, const char *, char *, size_t *);
++esp_err_t nvs_set_str(nvs_handle_t, const char *, const char *);
++esp_err_t nvs_commit(nvs_handle_t);
++void nvs_close(nvs_handle_t);
++#ifdef __cplusplus
++}
++#endif
+diff --git a/host_tests/test_api_guard.cpp b/host_tests/test_api_guard.cpp
+new file mode 100644
+index 0000000..ffdb392
+--- /dev/null
++++ b/host_tests/test_api_guard.cpp
+@@ -0,0 +1,101 @@
++#include <gtest/gtest.h>
++
++#include <cstring>
++#include <string>
++extern "C" {
++#include "api_guard.h"
++#include "push_auth.h"
++}
++static httpd_uri_t installed;
++static bool configured;
++static int calls;
++static std::string response_status;
++static bool closed;
++extern "C" {
++bool push_auth_enabled(void)
++{
++    return configured;
++}
++bool push_auth_matches(const char *header)
++{
++    return !strcmp(header, "Bearer valid-code");
++}
++esp_err_t httpd_register_uri_handler(httpd_handle_t, const httpd_uri_t *route)
++{
++    installed = *route;
++    return ESP_OK;
++}
++esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *req, const char *, char *out, size_t len)
++{
++    if (!req->test_auth || strlen(req->test_auth) >= len)
++        return ESP_FAIL;
++    strcpy(out, req->test_auth);
++    return ESP_OK;
++}
++esp_err_t httpd_resp_set_status(httpd_req_t *, const char *value)
++{
++    response_status = value;
++    return ESP_OK;
++}
++esp_err_t httpd_resp_set_hdr(httpd_req_t *, const char *key, const char *value)
++{
++    if (!strcmp(key, "Connection") && !strcmp(value, "close"))
++        closed = true;
++    return ESP_OK;
++}
++esp_err_t httpd_resp_sendstr(httpd_req_t *, const char *)
++{
++    return ESP_OK;
++}
++}
++static esp_err_t inner(httpd_req_t *req)
++{
++    ++calls;
++    EXPECT_EQ(req->user_ctx, &calls);
++    return ESP_OK;
++}
++static void run(const char *path, httpd_method_t method, const char *authorization)
++{
++    api_guard_reset();
++    calls = 0;
++    response_status.clear();
++    closed = false;
++    httpd_uri_t route = {path, method, inner, &calls};
++    ASSERT_EQ(api_guard_register_uri(nullptr, &route), ESP_OK);
++    httpd_req_t req = {path, method, installed.user_ctx, authorization};
++    installed.handler(&req);
++}
++
++TEST(ApiGuard, AllMutationPathsAndSecretReadsRejectBeforeHandler)
++{
++    configured = true;
++    for (auto path : {"/api/push", "/api/rotate", "/api/display-image", "/api/config",
++                      "/api/ota/update", "/api/factory-reset"}) {
++        for (auto header : {static_cast<const char *>(nullptr), "Bearer wrong", ""}) {
++            run(path, HTTP_POST, header);
++            EXPECT_EQ(calls, 0) << path;
++            EXPECT_EQ(response_status, "401 Unauthorized");
++            EXPECT_TRUE(closed);
++        }
++        run(path, HTTP_POST, "Bearer valid-code");
++        EXPECT_EQ(calls, 1) << path;
++    }
++    run("/api/config", HTTP_GET, nullptr);
++    EXPECT_EQ(calls, 0);
++    run("/api/debug/log", HTTP_GET, nullptr);
++    EXPECT_EQ(calls, 0);
++}
++
++TEST(ApiGuard, PushDisabledWithoutSecretAndReadOnlyImageStillWorks)
++{
++    configured = false;
++    run("/api/push", HTTP_POST, "Bearer valid-code");
++    EXPECT_EQ(calls, 0);
++    EXPECT_EQ(response_status, "503 Service Unavailable");
++    configured = true;
++    run("/api/current_image", HTTP_GET, nullptr);
++    EXPECT_EQ(calls, 1);
++    std::string oversized(200, 'a');
++    run("/api/push", HTTP_POST, oversized.c_str());
++    EXPECT_EQ(calls, 0);
++}
+diff --git a/host_tests/test_push_auth.cpp b/host_tests/test_push_auth.cpp
+new file mode 100644
+index 0000000..617981e
+--- /dev/null
++++ b/host_tests/test_push_auth.cpp
+@@ -0,0 +1,111 @@
++#include <gtest/gtest.h>
++
++#include <cstring>
++#include <filesystem>
++#include <fstream>
++#include <string>
++extern "C" {
++#include "nvs.h"
++#include "push_auth.h"
++#include "storage.h"
++}
++
++static std::string saved;
++static storage_type_t medium;
++static esp_err_t save_error;
++extern "C" {
++esp_err_t nvs_open(const char *, int, nvs_handle_t *out)
++{
++    *out = 1;
++    return ESP_OK;
++}
++esp_err_t nvs_get_str(nvs_handle_t, const char *, char *out, size_t *size)
++{
++    if (saved.empty())
++        return ESP_ERR_NVS_NOT_FOUND;
++    if (*size <= saved.size())
++        return ESP_ERR_INVALID_SIZE;
++    strcpy(out, saved.c_str());
++    return ESP_OK;
++}
++esp_err_t nvs_set_str(nvs_handle_t, const char *, const char *value)
++{
++    if (save_error)
++        return save_error;
++    saved = value;
++    return ESP_OK;
++}
++esp_err_t nvs_commit(nvs_handle_t)
++{
++    return ESP_OK;
++}
++void nvs_close(nvs_handle_t) {}
++storage_type_t storage_get_type(void)
++{
++    return medium;
++}
++}
++
++class PushAuth : public ::testing::Test
++{
++   protected:
++    const std::string code = std::string(64, 'a');
++    void SetUp() override
++    {
++        saved.clear();
++        medium = STORAGE_TYPE_SDCARD;
++        save_error = ESP_OK;
++        std::filesystem::create_directories("pf_auth_storage/config");
++    }
++    void TearDown() override
++    {
++        std::filesystem::remove_all("pf_auth_storage");
++    }
++    void write(const std::string &value)
++    {
++        std::ofstream("pf_auth_storage/config/push-token.txt", std::ios::binary) << value;
++    }
++};
++
++TEST_F(PushAuth, MissingSecretNeverAuthenticates)
++{
++    ASSERT_EQ(push_auth_init(), ESP_OK);
++    EXPECT_FALSE(push_auth_enabled());
++    EXPECT_FALSE(push_auth_matches("Bearer "));
++    EXPECT_FALSE(push_auth_matches(nullptr));
++}
++
++TEST_F(PushAuth, ProvisionRotateAndRebootWithoutCard)
++{
++    write(code + "\r\n");
++    ASSERT_EQ(push_auth_init(), ESP_OK);
++    EXPECT_TRUE(push_auth_enabled());
++    EXPECT_TRUE(push_auth_matches(("Bearer " + code).c_str()));
++    EXPECT_FALSE(push_auth_matches(("Bearer " + code + "x").c_str()));
++    EXPECT_FALSE(push_auth_matches(("Bearer " + std::string(64, 'b')).c_str()));
++    EXPECT_FALSE(push_auth_matches(code.c_str()));
++    medium = STORAGE_TYPE_NONE;
++    ASSERT_EQ(push_auth_init(), ESP_OK);
++    EXPECT_TRUE(push_auth_matches(("Bearer " + code).c_str()));
++    medium = STORAGE_TYPE_SDCARD;
++    write(std::string(128, 'b'));
++    ASSERT_EQ(push_auth_init(), ESP_OK);
++    EXPECT_FALSE(push_auth_matches(("Bearer " + code).c_str()));
++    EXPECT_TRUE(push_auth_matches(("Bearer " + std::string(128, 'b')).c_str()));
++}
++
++TEST_F(PushAuth, MalformedSecretAndPersistenceFailureLockDown)
++{
++    for (const auto &value : {std::string("short"), std::string(129, 'a'), code + "\nother",
++                              code + std::string(1, '\0')}) {
++        write(value);
++        EXPECT_NE(push_auth_init(), ESP_OK);
++        EXPECT_TRUE(push_auth_enabled());
++        EXPECT_FALSE(push_auth_matches(("Bearer " + code).c_str()));
++    }
++    save_error = ESP_FAIL;
++    write(code);
++    EXPECT_NE(push_auth_init(), ESP_OK);
++    EXPECT_TRUE(push_auth_enabled());
++    EXPECT_FALSE(push_auth_matches(("Bearer " + code).c_str()));
++}
+diff --git a/host_tests/test_wifi_profiles.cpp b/host_tests/test_wifi_profiles.cpp
+new file mode 100644
+index 0000000..456b339
+--- /dev/null
++++ b/host_tests/test_wifi_profiles.cpp
+@@ -0,0 +1,114 @@
++#include <gtest/gtest.h>
++
++#include <filesystem>
++#include <fstream>
++#include <string>
++#include <vector>
++extern "C" {
++#include "wifi_profiles.h"
++}
++
++class WifiProfiles : public ::testing::Test
++{
++   protected:
++    std::string dir, path;
++    void SetUp() override
++    {
++        char name[] = "/tmp/pf-wifi-XXXXXX";
++        dir = mkdtemp(name);
++        path = dir + "/wifi.json";
++    }
++    void TearDown() override
++    {
++        std::filesystem::remove_all(dir);
++    }
++};
++
++TEST_F(WifiProfiles, MultipleNetworksSurviveReloadAndUpdate)
++{
++    wifi_profiles_t profiles = {}, rebooted = {};
++    ASSERT_EQ(wifi_profiles_load(path.c_str(), &profiles), WIFI_PROFILES_NOT_FOUND);
++    ASSERT_EQ(wifi_profiles_upsert(&profiles, "home", "password-one"), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_upsert(&profiles, "office", "password-two"), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_save(path.c_str(), &profiles), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_load(path.c_str(), &rebooted), WIFI_PROFILES_OK);
++    ASSERT_EQ(rebooted.count, 2u);
++    EXPECT_STREQ(rebooted.items[0].ssid, "home");
++    EXPECT_STREQ(rebooted.items[1].password, "password-two");
++    ASSERT_EQ(wifi_profiles_upsert(&rebooted, "home", "replacement"), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_save(path.c_str(), &rebooted), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_load(path.c_str(), &profiles), WIFI_PROFILES_OK);
++    EXPECT_EQ(profiles.count, 2u);
++    EXPECT_STREQ(profiles.items[0].password, "replacement");
++    EXPECT_FALSE(std::filesystem::exists(path + ".tmp"));
++}
++
++TEST_F(WifiProfiles, BoundsAndFullListAreNotSilentlyTruncated)
++{
++    wifi_profiles_t profiles = {};
++    EXPECT_TRUE(wifi_profile_valid(std::string(32, 's').c_str(), std::string(64, 'a').c_str()));
++    EXPECT_FALSE(wifi_profile_valid(std::string(33, 's').c_str(), "password"));
++    EXPECT_FALSE(wifi_profile_valid("home", "short"));
++    EXPECT_FALSE(wifi_profile_valid("home", std::string(64, 'z').c_str()));
++    EXPECT_TRUE(wifi_profile_valid("open wifi", ""));
++    for (int i = 0; i < WIFI_PROFILE_LIMIT; ++i)
++        ASSERT_EQ(wifi_profiles_upsert(&profiles, std::to_string(i).c_str(), "password"),
++                  WIFI_PROFILES_OK);
++    EXPECT_EQ(wifi_profiles_upsert(&profiles, "extra", "password"), WIFI_PROFILES_FULL);
++    EXPECT_EQ(profiles.count, WIFI_PROFILE_LIMIT);
++}
++
++TEST_F(WifiProfiles, BootSelectionFallsBackInPriorityOrderAndStopsOnSuccess)
++{
++    wifi_profiles_t profiles = {};
++    for (const char *ssid : {"unreachable", "office", "backup"})
++        ASSERT_EQ(wifi_profiles_upsert(&profiles, ssid, "password"), WIFI_PROFILES_OK);
++    struct Trial {
++        std::vector<std::string> calls;
++        bool success;
++    } trial = {{}, true};
++    auto connect = [](const wifi_profile_t *profile, void *arg) {
++        auto *trial = static_cast<Trial *>(arg);
++        trial->calls.push_back(profile->ssid);
++        return trial->success && trial->calls.back() == "office";
++    };
++    EXPECT_EQ(wifi_profiles_try_connect(&profiles, connect, &trial), 1);
++    EXPECT_EQ(trial.calls, (std::vector<std::string>{"unreachable", "office"}));
++    trial = {{}, false};
++    EXPECT_EQ(wifi_profiles_try_connect(&profiles, connect, &trial), -1);
++    EXPECT_EQ(trial.calls.size(), 3u);
++    EXPECT_EQ(profiles.count, 3u);
++}
++
++TEST_F(WifiProfiles, MalformedDuplicatesOversizeAndEmbeddedNullRejected)
++{
++    for (
++        const auto &body :
++        {std::string("not json"),
++         std::string(
++             R"({"version":1,"networks":[{"ssid":"x","password":"password"},{"ssid":"x","password":"password"}]})"),
++         std::string(R"({"version":1,"networks":[{"ssid":"x\u0000y","password":"password"}]})"),
++         std::string(8193, ' '), std::string(R"({"version":1,"networks":[],"bad":[[[[[]]]]]})"),
++         std::string(R"({"version":2,"networks":[]})")}) {
++        std::ofstream(path, std::ios::binary) << body;
++        wifi_profiles_t profiles = {};
++        EXPECT_EQ(wifi_profiles_load(path.c_str(), &profiles), WIFI_PROFILES_INVALID);
++        EXPECT_EQ(profiles.count, 0u);
++    }
++}
++
++TEST_F(WifiProfiles, RecoverInterruptedFatRenameAndRetainExplicitEmptyList)
++{
++    wifi_profiles_t profiles = {}, loaded = {};
++    ASSERT_EQ(wifi_profiles_upsert(&profiles, "home", "password"), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_save(path.c_str(), &profiles), WIFI_PROFILES_OK);
++    std::filesystem::rename(path, path + ".bak");
++    ASSERT_EQ(wifi_profiles_load(path.c_str(), &loaded), WIFI_PROFILES_OK);
++    EXPECT_EQ(loaded.count, 1u);
++    profiles.count = 0;
++    ASSERT_EQ(wifi_profiles_save(path.c_str(), &profiles), WIFI_PROFILES_OK);
++    ASSERT_EQ(wifi_profiles_load(path.c_str(), &loaded), WIFI_PROFILES_OK);
++    EXPECT_EQ(loaded.count, 0u);
++    EXPECT_EQ(wifi_profiles_save((dir + "/missing/wifi.json").c_str(), &profiles),
++              WIFI_PROFILES_IO);
++}
+diff --git a/main/CMakeLists.txt b/main/CMakeLists.txt
+index a0d93ab..a0d835d 100644
+--- a/main/CMakeLists.txt
++++ b/main/CMakeLists.txt
+@@ -22,6 +22,9 @@ set(SOURCES
+     "cron.c"
+     "utils.c"
+     "wifi_manager.c"
++    "wifi_profiles.c"
++    "push_auth.c"
++    "api_guard.c"
+     "wifi_provisioning.c"
+ )
+ 
+diff --git a/main/api_guard.c b/main/api_guard.c
+new file mode 100644
+index 0000000..90e7e14
+--- /dev/null
++++ b/main/api_guard.c
+@@ -0,0 +1,65 @@
++#include "api_guard.h"
++
++#include <string.h>
++
++#include "push_auth.h"
++typedef struct {
++    esp_err_t (*handler)(httpd_req_t *);
++    void *user_ctx;
++} secured_route_t;
++static secured_route_t secured_routes[64];
++static size_t secured_route_count;
++
++static esp_err_t secured_handler(httpd_req_t *req)
++{
++    secured_route_t *route = req->user_ctx;
++    if (!push_auth_enabled() && !strcmp(req->uri, "/api/push")) {
++        httpd_resp_set_status(req, "503 Service Unavailable");
++        httpd_resp_set_hdr(req, "Connection", "close");
++        httpd_resp_sendstr(req, "Push authentication is not configured");
++        return ESP_FAIL;
++    }
++    if (push_auth_enabled()) {
++        char authorization[144] = {0};
++        if (httpd_req_get_hdr_value_str(req, "Authorization", authorization,
++                                        sizeof(authorization)) != ESP_OK ||
++            !push_auth_matches(authorization)) {
++            // The body has not been read. Close instead of treating it as the
++            // next keep-alive request; unauthorized clients never touch storage.
++            httpd_resp_set_status(req, "401 Unauthorized");
++            httpd_resp_set_hdr(req, "WWW-Authenticate", "Bearer realm=\"PhotoFrame\"");
++            httpd_resp_set_hdr(req, "Connection", "close");
++            httpd_resp_sendstr(req, "Authentication required");
++            return ESP_FAIL;
++        }
++    }
++    req->user_ctx = route->user_ctx;
++    esp_err_t err = route->handler(req);
++    req->user_ctx = route;
++    return err;
++}
++
++esp_err_t api_guard_register_uri(httpd_handle_t handle, const httpd_uri_t *uri)
++{
++    // Protect every state-changing API, including legacy display/rotate/config/
++    // OTA/factory-reset paths, so the new push endpoint cannot be bypassed.
++    bool protect = !strncmp(uri->uri, "/api/", 5) &&
++                   (uri->method != HTTP_GET || !strcmp(uri->uri, "/api/config") ||
++                    !strncmp(uri->uri, "/api/debug", 10));
++    if (!protect)
++        return httpd_register_uri_handler(handle, uri);
++    if (secured_route_count >= sizeof(secured_routes) / sizeof(secured_routes[0]))
++        return ESP_ERR_NO_MEM;
++    secured_route_t *route = &secured_routes[secured_route_count++];
++    route->handler = uri->handler;
++    route->user_ctx = uri->user_ctx;
++    httpd_uri_t copy = *uri;
++    copy.handler = secured_handler;
++    copy.user_ctx = route;
++    return httpd_register_uri_handler(handle, &copy);
++}
++
++void api_guard_reset(void)
++{
++    secured_route_count = 0;
++}
+diff --git a/main/api_guard.h b/main/api_guard.h
+new file mode 100644
+index 0000000..a9772d0
+--- /dev/null
++++ b/main/api_guard.h
+@@ -0,0 +1,4 @@
++#pragma once
++#include "esp_http_server.h"
++esp_err_t api_guard_register_uri(httpd_handle_t handle, const httpd_uri_t *uri);
++void api_guard_reset(void);
+diff --git a/main/config.h b/main/config.h
+index 5b550a0..99f9757 100644
+--- a/main/config.h
++++ b/main/config.h
+@@ -22,8 +22,8 @@ typedef enum { IP_MODE_DHCP = 0, IP_MODE_STATIC = 1 } ip_mode_t;
+ #define IP_ADDR_STR_MAX_LEN 16  // dotted IPv4 + NUL
+ 
+ #define DEVICE_NAME_MAX_LEN 64
+-#define WIFI_SSID_MAX_LEN 32
+-#define WIFI_PASS_MAX_LEN 64
++#define WIFI_SSID_MAX_LEN 33
++#define WIFI_PASS_MAX_LEN 65
+ #define IMAGE_URL_MAX_LEN 256
+ #define HA_URL_MAX_LEN 256
+ #define ROTATION_MODE_MAX_LEN 16
+@@ -162,4 +162,4 @@ typedef enum { IP_MODE_DHCP = 0, IP_MODE_STATIC = 1 } ip_mode_t;
+ #define GITHUB_API_URL "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
+ #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
+ 
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/main/http_server.c b/main/http_server.c
+index ff3e712..8062b73 100644
+--- a/main/http_server.c
++++ b/main/http_server.c
+@@ -11,6 +11,7 @@
+ #include <unistd.h>
+ 
+ #include "album_manager.h"
++#include "api_guard.h"
+ #include "board_hal.h"
+ #include "cJSON.h"
+ #include "color_palette.h"
+@@ -24,6 +25,7 @@
+ #include "esp_http_server.h"
+ #include "esp_littlefs.h"
+ #include "esp_log.h"
++#include "esp_timer.h"
+ #include "esp_vfs.h"
+ #include "esp_vfs_fat.h"
+ #include "freertos/task.h"
+@@ -34,6 +36,7 @@
+ #include "periodic_tasks.h"
+ #include "power_manager.h"
+ #include "processing_settings.h"
++#include "push_auth.h"
+ #include "sdcard.h"
+ #include "storage.h"
+ #include "utils.h"
+@@ -48,6 +51,8 @@ static bool system_ready = false;
+ 
+ #define HTTPD_503 "503 Service Unavailable"
+ 
++#define httpd_register_uri_handler api_guard_register_uri
++
+ /**
+  * @brief Validate a user-supplied path component to prevent directory traversal attacks.
+  *
+@@ -537,12 +542,21 @@ static esp_err_t receive_raw_body(httpd_req_t *req, const char *dest_path)
+     char *buf = malloc(4096);
+     if (!buf) {
+         fclose(fp);
++        unlink(dest_path);
+         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+         return ESP_FAIL;
+     }
+ 
+     size_t received = 0;
++    int64_t deadline = esp_timer_get_time() + 60LL * 1000 * 1000;
+     while (received < content_len) {
++        if (esp_timer_get_time() > deadline) {
++            free(buf);
++            fclose(fp);
++            unlink(dest_path);
++            httpd_resp_send_err(req, HTTPD_408_REQ_TIMEOUT, "Upload deadline exceeded");
++            return ESP_FAIL;
++        }
+         size_t to_read = MIN(4096, content_len - received);
+         int ret = httpd_req_recv(req, buf, to_read);
+         if (ret <= 0) {
+@@ -557,12 +571,25 @@ static esp_err_t receive_raw_body(httpd_req_t *req, const char *dest_path)
+             return ESP_FAIL;
+         }
+ 
+-        fwrite(buf, 1, ret, fp);
++        if (fwrite(buf, 1, ret, fp) != (size_t) ret) {
++            free(buf);
++            fclose(fp);
++            unlink(dest_path);
++            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Storage write failed");
++            return ESP_FAIL;
++        }
+         received += ret;
+     }
+ 
+     free(buf);
+-    fclose(fp);
++    bool flush_failed = fflush(fp) != 0;
++    if (fclose(fp) != 0)
++        flush_failed = true;
++    if (flush_failed) {
++        unlink(dest_path);
++        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Storage flush failed");
++        return ESP_FAIL;
++    }
+ 
+     ESP_LOGI(TAG, "Image received successfully");
+     return ESP_OK;
+@@ -644,8 +671,14 @@ static esp_err_t display_image_direct_handler(httpd_req_t *req)
+         return ESP_FAIL;
+     }
+ 
++    image_format_t detected = image_processor_detect_format(CURRENT_UPLOAD_PATH);
++    if (format != IMAGE_FORMAT_UNKNOWN && detected != format) {
++        unlink(CURRENT_UPLOAD_PATH);
++        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Image type does not match body");
++        return ESP_FAIL;
++    }
+     if (format == IMAGE_FORMAT_UNKNOWN) {
+-        format = image_processor_detect_format(CURRENT_UPLOAD_PATH);
++        format = detected;
+         if (format == IMAGE_FORMAT_UNKNOWN) {
+             ESP_LOGE(TAG, "Unsupported image format or format detection failed");
+             unlink(CURRENT_UPLOAD_PATH);
+@@ -657,6 +690,31 @@ static esp_err_t display_image_direct_handler(httpd_req_t *req)
+     return display_received_image(req, CURRENT_UPLOAD_PATH, format, NULL);
+ }
+ 
++static esp_err_t push_image_handler(httpd_req_t *req)
++{
++    if (!push_auth_enabled()) {
++        httpd_resp_set_status(req, HTTPD_503);
++        httpd_resp_set_hdr(req, "Connection", "close");
++        httpd_resp_sendstr(req, "Provision config/push-token.txt on SD and reboot first");
++        return ESP_FAIL;
++    }
++    char type[64] = {0};
++    if (httpd_req_get_hdr_value_str(req, "Content-Type", type, sizeof(type)) != ESP_OK ||
++        (strcmp(type, "image/png") && strcmp(type, "image/jpeg"))) {
++        httpd_resp_set_status(req, "415 Unsupported Media Type");
++        httpd_resp_set_hdr(req, "Connection", "close");
++        httpd_resp_sendstr(req, "Send a raw image/png or image/jpeg body");
++        return ESP_FAIL;
++    }
++    if (req->content_len > 5 * 1024 * 1024) {
++        httpd_resp_set_status(req, "413 Payload Too Large");
++        httpd_resp_set_hdr(req, "Connection", "close");
++        httpd_resp_sendstr(req, "Maximum image size is 5 MiB");
++        return ESP_FAIL;
++    }
++    return display_image_direct_handler(req);
++}
++
+ // URL decode helper function to handle encoded characters like %20 for space
+ static void url_decode(char *dst, const char *src, size_t dst_size)
+ {
+@@ -2342,7 +2400,8 @@ static esp_err_t color_palette_handler(httpd_req_t *req)
+ esp_err_t http_server_init(void)
+ {
+     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+-    config.max_uri_handlers = 50;
++    config.max_uri_handlers = 54;
++    api_guard_reset();
+     config.stack_size = 12288;       // Increased from 8192 to 12KB
+     config.max_open_sockets = 10;    // Limit concurrent connections to prevent memory exhaustion
+     config.lru_purge_enable = true;  // Enable LRU purging of connections
+@@ -2401,6 +2460,11 @@ esp_err_t http_server_init(void)
+         httpd_uri_t rotate_uri = {
+             .uri = "/api/rotate", .method = HTTP_POST, .handler = rotate_handler, .user_ctx = NULL};
+         httpd_register_uri_handler(server, &rotate_uri);
++        httpd_uri_t push_uri = {.uri = "/api/push",
++                                .method = HTTP_POST,
++                                .handler = push_image_handler,
++                                .user_ctx = NULL};
++        ESP_ERROR_CHECK(httpd_register_uri_handler(server, &push_uri));
+ 
+         httpd_uri_t current_image_uri = {.uri = "/api/current_image",
+                                          .method = HTTP_GET,
+diff --git a/main/main.c b/main/main.c
+index 68b6ead..164ea70 100644
+--- a/main/main.c
++++ b/main/main.c
+@@ -38,6 +38,7 @@
+ #include "periodic_tasks.h"
+ #include "power_manager.h"
+ #include "processing_settings.h"
++#include "push_auth.h"
+ #include "splash_screen.h"
+ #include "storage.h"
+ #include "utils.h"
+@@ -118,31 +119,7 @@ static esp_err_t sntp_sync_periodic_callback(void)
+ // Helper function to connect to WiFi with timeout
+ static bool connect_to_wifi_with_timeout(int timeout_seconds)
+ {
+-    char wifi_ssid[WIFI_SSID_MAX_LEN] = {0};
+-    char wifi_password[WIFI_PASS_MAX_LEN] = {0};
+-
+-    ESP_ERROR_CHECK(wifi_manager_load_credentials(wifi_ssid, wifi_password));
+-    ESP_LOGI(TAG, "Connecting to WiFi SSID: %s", wifi_ssid);
+-    wifi_manager_connect(wifi_ssid, wifi_password);
+-
+-    // Wait for WiFi connection (with timeout)
+-    ESP_LOGI(TAG, "Waiting for WiFi connection...");
+-    int retry_count = 0;
+-    while (!wifi_manager_is_connected() && retry_count < timeout_seconds) {
+-        if (retry_count % 10 == 0 && retry_count > 0) {
+-            ESP_LOGI(TAG, "WiFi connecting... (%d seconds elapsed)", retry_count);
+-        }
+-        vTaskDelay(pdMS_TO_TICKS(1000));
+-        retry_count++;
+-    }
+-
+-    if (wifi_manager_is_connected()) {
+-        ESP_LOGI(TAG, "WiFi connected after %d seconds", retry_count);
+-        return true;
+-    } else {
+-        ESP_LOGE(TAG, "WiFi connection timeout after %d seconds", timeout_seconds);
+-        return false;
+-    }
++    return wifi_manager_connect_saved(timeout_seconds) == ESP_OK;
+ }
+ 
+ static void button_task(void *arg)
+@@ -464,6 +441,13 @@ void app_main(void)
+     ESP_ERROR_CHECK(ret);
+ 
+     ESP_ERROR_CHECK(config_manager_init());
++    esp_err_t auth_error = push_auth_init();
++    if (auth_error != ESP_OK)
++        ESP_LOGE(TAG, "Push authentication configuration invalid (locked)");
++    if (push_auth_enabled()) {
++        config_manager_set_deep_sleep_enabled(false);
++        config_manager_set_auto_rotate(false);
++    }
+ 
+     // Start mirroring console logs to storage if debug logging is enabled.
+     debug_log_init();
+@@ -566,6 +550,10 @@ void app_main(void)
+ 
+     // Check wake-up source
+     wakeup_source_t wakeup_src = power_manager_get_wakeup_source();
++    if (push_auth_enabled() &&
++        (wakeup_src == WAKEUP_SOURCE_TIMER || wakeup_src == WAKEUP_SOURCE_ROTATE_BUTTON)) {
++        wakeup_src = WAKEUP_SOURCE_BOOT_BUTTON;
++    }
+     ESP_LOGI(TAG, "Wake-up source: %d", wakeup_src);
+ 
+     switch (wakeup_src) {
+@@ -598,98 +586,26 @@ void app_main(void)
+     ESP_ERROR_CHECK(wifi_manager_init());
+     ESP_ERROR_CHECK(wifi_provisioning_init());
+ 
+-    if (!wifi_provisioning_is_provisioned()) {
+-        bool creds_loaded = false;
+-
+-        // Try to load WiFi credentials from storage
+-        char sd_ssid[WIFI_SSID_MAX_LEN] = {0};
+-        char sd_password[WIFI_PASS_MAX_LEN] = {0};
+-
+-        if (storage_read_wifi_credentials(sd_ssid, sd_password) == ESP_OK) {
+-            ESP_LOGI(TAG, "===========================================");
+-            ESP_LOGI(TAG, "WiFi credentials found on storage!");
+-            ESP_LOGI(TAG, "Saving to NVS and connecting...");
+-            ESP_LOGI(TAG, "===========================================");
+-
+-            // Save credentials to NVS
+-            if (wifi_manager_save_credentials(sd_ssid, sd_password) == ESP_OK) {
+-                ESP_LOGI(TAG, "WiFi credentials saved to NVS");
+-                ESP_LOGI(TAG, "Restarting to connect with new credentials...");
+-                vTaskDelay(pdMS_TO_TICKS(2000));
+-                esp_restart();
+-                creds_loaded = true;
+-            } else {
+-                ESP_LOGE(TAG, "Failed to save WiFi credentials to NVS");
+-            }
+-        }
+-
+-        // No credentials found, start captive portal provisioning
+-        if (!creds_loaded) {
+-            ESP_LOGI(TAG, "===========================================");
+-            ESP_LOGI(TAG, "No WiFi credentials found - Starting AP mode");
+-            ESP_LOGI(TAG, "===========================================");
+-
+-            // Out-of-box setup: give the user more time to scan the QR code
+-            // and provision via the app before the device auto-sleeps.
+-            power_manager_set_auto_sleep_timeout(OOBE_AUTO_SLEEP_TIMEOUT_SEC);
+-
+-            // Show OOBE splash screen with WiFi QR code
+-            splash_screen_display();
+-
+-            if (storage_has_persistent_storage()) {
+-                ESP_LOGI(TAG, "Option 1: Place wifi.txt on root of storage with:");
+-                ESP_LOGI(TAG, "  Line 1: WiFi SSID");
+-                ESP_LOGI(TAG, "  Line 2: WiFi Password");
+-                ESP_LOGI(TAG, "  Line 3: Device Name (optional, default: PhotoFrame)");
+-                ESP_LOGI(TAG, "  Then restart the device");
+-                ESP_LOGI(TAG, "===========================================");
+-            }
+-            ESP_LOGI(TAG, "Option 2: Use captive portal:");
+-            ESP_LOGI(TAG, "1. Connect to WiFi: PhotoFrame - XXXXXX");
+-            ESP_LOGI(TAG, "2. Open browser to: http://192.168.4.1");
+-            ESP_LOGI(TAG, "3. Enter your WiFi credentials");
+-            ESP_LOGI(TAG, "===========================================");
+-
+-            ESP_ERROR_CHECK(wifi_provisioning_start_ap());
+-
+-            while (!wifi_provisioning_is_provisioned()) {
+-                vTaskDelay(pdMS_TO_TICKS(1000));
+-            }
+-
+-            // Set flag to show setup-complete screen after restart
+-            nvs_handle_t nvs_handle;
+-            if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+-                nvs_set_u8(nvs_handle, NVS_SETUP_COMPLETE_KEY, 1);
+-                nvs_commit(nvs_handle);
+-                nvs_close(nvs_handle);
+-            }
+-
+-            ESP_LOGI(TAG, "WiFi credentials saved! Restarting...");
+-            vTaskDelay(pdMS_TO_TICKS(3000));
+-            esp_restart();
+-        }
+-    }
+-
+-    if (connect_to_wifi_with_timeout(30)) {
+-        // Check and run periodic tasks (OTA check, SNTP sync if due)
+-        // Note: If RTC was invalid at boot, sntp_sync was already forced via
+-        // periodic_tasks_force_run()
+-        ESP_LOGI(TAG, "Checking periodic tasks...");
++    if (connect_to_wifi_with_timeout(20)) {
+         periodic_tasks_check_and_run();
+-
+-        // Start mDNS service
+         ESP_ERROR_CHECK(mdns_service_init());
+     } else {
+-        ESP_LOGW(TAG, "Failed to connect to WiFi - clearing credentials");
+-        nvs_handle_t nvs_handle;
+-        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+-            nvs_erase_key(nvs_handle, NVS_WIFI_SSID_KEY);
+-            nvs_erase_key(nvs_handle, NVS_WIFI_PASS_KEY);
+-            nvs_commit(nvs_handle);
+-            nvs_close(nvs_handle);
++        // Never erase saved profiles just because a network is unreachable.
++        ESP_LOGW(TAG, "No saved WiFi connected; starting recovery provisioning");
++        power_manager_set_auto_sleep_timeout(OOBE_AUTO_SLEEP_TIMEOUT_SEC);
++        splash_screen_display();
++        ESP_ERROR_CHECK(wifi_provisioning_start_ap());
++        while (!wifi_provisioning_saved_this_session()) {
++            vTaskDelay(pdMS_TO_TICKS(1000));
++        }
++        // Preserve the upstream setup-complete screen after a recovery save.
++        nvs_handle_t setup_handle;
++        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &setup_handle) == ESP_OK) {
++            nvs_set_u8(setup_handle, NVS_SETUP_COMPLETE_KEY, 1);
++            nvs_commit(setup_handle);
++            nvs_close(setup_handle);
+         }
+-        ESP_LOGI(TAG, "Restarting to enter provisioning mode...");
+-        vTaskDelay(pdMS_TO_TICKS(2000));
++        vTaskDelay(pdMS_TO_TICKS(3000));
+         esp_restart();
+     }
+ 
+diff --git a/main/push_auth.c b/main/push_auth.c
+new file mode 100644
+index 0000000..a14adaf
+--- /dev/null
++++ b/main/push_auth.c
+@@ -0,0 +1,98 @@
++#include "push_auth.h"
++
++#include <errno.h>
++#include <stdio.h>
++#include <string.h>
++
++#include "config.h"
++#include "nvs.h"
++#include "storage.h"
++
++static char token[129];
++static bool enabled;
++static bool valid_token(const char *value)
++{
++    size_t len = strlen(value);
++    if (len < 32 || len > 128)
++        return false;
++    for (size_t i = 0; i < len; ++i)
++        if ((unsigned char) value[i] < 33 || (unsigned char) value[i] > 126)
++            return false;
++    return true;
++}
++
++esp_err_t push_auth_init(void)
++{
++    enabled = false;
++    memset(token, 0, sizeof(token));
++    nvs_handle_t handle;
++    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
++    if (err != ESP_OK) {
++        enabled = true;
++        return err;
++    }
++    size_t size = sizeof(token);
++    err = nvs_get_str(handle, "push_token", token, &size);
++    if (err != ESP_ERR_NVS_NOT_FOUND)
++        enabled = true;
++    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
++        nvs_close(handle);
++        return err;
++    }
++    if (storage_get_type() == STORAGE_TYPE_SDCARD) {
++        FILE *file = fopen(FS_MOUNT_POINT "/config/push-token.txt", "rb");
++        if (file) {
++            enabled = true;
++            char incoming[132] = {0};
++            size_t len = fread(incoming, 1, sizeof(incoming) - 1, file);
++            bool failed = ferror(file) || !feof(file);
++            fclose(file);
++            while (len && (incoming[len - 1] == '\n' || incoming[len - 1] == '\r'))
++                incoming[--len] = 0;
++            if (failed || strlen(incoming) != len || !valid_token(incoming)) {
++                memset(token, 0, sizeof(token));
++                nvs_close(handle);
++                return ESP_ERR_INVALID_ARG;
++            }
++            err = nvs_set_str(handle, "push_token", incoming);
++            if (err == ESP_OK)
++                err = nvs_commit(handle);
++            if (err != ESP_OK) {
++                memset(token, 0, sizeof(token));
++                nvs_close(handle);
++                return err;
++            }
++            strcpy(token, incoming);
++        } else if (errno != ENOENT) {
++            enabled = true;
++            memset(token, 0, sizeof(token));
++            nvs_close(handle);
++            return ESP_FAIL;
++        }
++    }
++    nvs_close(handle);
++    if (enabled && !valid_token(token)) {
++        memset(token, 0, sizeof(token));
++        return ESP_ERR_INVALID_ARG;
++    }
++    return ESP_OK;
++}
++
++bool push_auth_enabled(void)
++{
++    return enabled;
++}
++
++bool push_auth_matches(const char *authorization)
++{
++    if (!enabled || !valid_token(token) || !authorization || strncmp(authorization, "Bearer ", 7))
++        return false;
++    const char *provided = authorization + 7;
++    size_t len = strlen(token);
++    if (strlen(provided) != len)
++        return false;
++    volatile unsigned char difference = 0;
++    for (size_t i = 0; i < len; ++i)
++        difference |= token[i] ^ provided[i];
++    return difference == 0;
++}
+diff --git a/main/push_auth.h b/main/push_auth.h
+new file mode 100644
+index 0000000..556a4d1
+--- /dev/null
++++ b/main/push_auth.h
+@@ -0,0 +1,10 @@
++#pragma once
++#include <stdbool.h>
++
++#include "esp_err.h"
++
++// Boot-only loading. SD can provision/rotate the secret; NVS retains it if the
++// card is removed. No HTTP endpoint reads or modifies this secret.
++esp_err_t push_auth_init(void);
++bool push_auth_enabled(void);
++bool push_auth_matches(const char *authorization);
+diff --git a/main/wifi_manager.c b/main/wifi_manager.c
+index 15c5286..1d36bb5 100644
+--- a/main/wifi_manager.c
++++ b/main/wifi_manager.c
+@@ -1,6 +1,8 @@
+ #include "wifi_manager.h"
+ 
++#include <errno.h>
+ #include <string.h>
++#include <sys/stat.h>
+ 
+ #include "config.h"
+ #include "config_manager.h"
+@@ -18,6 +20,7 @@
+ #include "nvs_flash.h"
+ #include "storage.h"
+ #include "utils.h"
++#include "wifi_profiles.h"
+ 
+ static const char *TAG = "wifi_manager";
+ 
+@@ -27,6 +30,7 @@ static const char *TAG = "wifi_manager";
+ static EventGroupHandle_t s_wifi_event_group;
+ static int s_retry_num = 0;
+ static bool s_is_connected = false;
++static bool s_allow_reconnect = false;
+ static esp_netif_t *s_sta_netif = NULL;
+ 
+ static void apply_dns_override(void);
+@@ -43,6 +47,10 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
+         // before falling back to the A record.
+         esp_netif_create_ip6_linklocal(s_sta_netif);
+     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
++        s_is_connected = false;
++        xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
++        if (!s_allow_reconnect)
++            return;
+         if (s_retry_num < 5) {
+             esp_wifi_connect();
+             s_retry_num++;
+@@ -198,50 +206,103 @@ static void apply_dns_override(void)
+     ESP_LOGI(TAG, "DNS server set to: %s", dns);
+ }
+ 
+-esp_err_t wifi_manager_connect(const char *ssid, const char *password)
++static esp_err_t connect_with_timeout(const char *ssid, const char *password, int timeout_seconds)
+ {
+-    if (!ssid || strlen(ssid) == 0) {
+-        ESP_LOGE(TAG, "SSID is empty");
++    if (!wifi_profile_valid(ssid, password) || timeout_seconds <= 0) {
+         return ESP_ERR_INVALID_ARG;
+     }
+ 
+     wifi_manager_apply_ip_config();
+ 
+     wifi_config_t wifi_config = {0};
+-    strncpy((char *) wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+-    if (password) {
+-        strncpy((char *) wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+-    }
+-    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
++    memcpy(wifi_config.sta.ssid, ssid, strlen(ssid));
++    memcpy(wifi_config.sta.password, password, strlen(password));
++    wifi_config.sta.threshold.authmode = *password ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+     wifi_config.sta.pmf_cfg.capable = true;
+     wifi_config.sta.pmf_cfg.required = false;
+ 
+     // Stop WiFi if it's running, then set config
++    s_allow_reconnect = false;
+     esp_wifi_stop();
++    vTaskDelay(pdMS_TO_TICKS(20));
++    s_is_connected = false;
++    s_retry_num = 0;
++    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+ 
+-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+-    ESP_ERROR_CHECK(esp_wifi_start());
++    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
++    if (err != ESP_OK)
++        return err;
++    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
++    if (err != ESP_OK)
++        return err;
++    s_allow_reconnect = true;
++    err = esp_wifi_start();
++    if (err != ESP_OK) {
++        s_allow_reconnect = false;
++        return err;
++    }
+     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));  // Enable power save at boot/connect
+ 
+-    s_retry_num = 0;
+-    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+-                                           pdFALSE, pdFALSE, portMAX_DELAY);
++                                           pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_seconds * 1000));
+ 
+     if (bits & WIFI_CONNECTED_BIT) {
+         ESP_LOGI(TAG, "connected to ap SSID:%s", ssid);
+         return ESP_OK;
+     } else if (bits & WIFI_FAIL_BIT) {
++        s_allow_reconnect = false;
++        esp_wifi_stop();
+         ESP_LOGI(TAG, "Failed to connect to SSID:%s", ssid);
+         return ESP_FAIL;
+     } else {
+-        ESP_LOGE(TAG, "UNEXPECTED EVENT");
++        s_allow_reconnect = false;
++        esp_wifi_stop();
++        return ESP_ERR_TIMEOUT;
++    }
++}
++
++esp_err_t wifi_manager_connect(const char *ssid, const char *password)
++{
++    return connect_with_timeout(ssid, password, 20);
++}
++
++static bool connect_profile(const wifi_profile_t *profile, void *context)
++{
++    int timeout_seconds = *(int *) context;
++    return connect_with_timeout(profile->ssid, profile->password, timeout_seconds) == ESP_OK;
++}
++
++esp_err_t wifi_manager_connect_saved(int timeout_seconds)
++{
++    wifi_profiles_t profiles = {0};
++    wifi_profiles_result_t result = WIFI_PROFILES_NOT_FOUND;
++    if (storage_get_type() == STORAGE_TYPE_SDCARD)
++        result = wifi_profiles_load(FS_MOUNT_POINT "/config/wifi.json", &profiles);
++    if (result == WIFI_PROFILES_NOT_FOUND) {
++        char ssid[WIFI_SSID_MAX_LEN] = {0}, password[WIFI_PASS_MAX_LEN] = {0};
++        esp_err_t err = wifi_manager_load_credentials(ssid, password);
++        if (err != ESP_OK)
++            err = storage_read_wifi_credentials(ssid, password);
++        if (err != ESP_OK)
++            return err;
++        if (wifi_profiles_upsert(&profiles, ssid, password) != WIFI_PROFILES_OK)
++            return ESP_ERR_INVALID_ARG;
++        // One-time migration; existing SD lists (including an empty list) are
++        // authoritative and must never be repopulated from deleted NVS entries.
++        if (storage_get_type() == STORAGE_TYPE_SDCARD &&
++            wifi_manager_save_credentials(ssid, password) != ESP_OK)
++            return ESP_FAIL;
++    } else if (result != WIFI_PROFILES_OK) {
++        ESP_LOGE(TAG, "Invalid/unreadable SD WiFi list; preserving it for repair");
+         return ESP_FAIL;
+     }
++    return wifi_profiles_try_connect(&profiles, connect_profile, &timeout_seconds) >= 0 ? ESP_OK
++                                                                                        : ESP_FAIL;
+ }
+ 
+ esp_err_t wifi_manager_disconnect(void)
+ {
++    s_allow_reconnect = false;
+     s_is_connected = false;
+     return esp_wifi_disconnect();
+ }
+@@ -274,6 +335,21 @@ esp_err_t wifi_manager_get_ip(char *ip_str, size_t len)
+ 
+ esp_err_t wifi_manager_save_credentials(const char *ssid, const char *password)
+ {
++    if (!wifi_profile_valid(ssid, password))
++        return ESP_ERR_INVALID_ARG;
++    if (storage_get_type() == STORAGE_TYPE_SDCARD) {
++        wifi_profiles_t profiles = {0};
++        wifi_profiles_result_t result =
++            wifi_profiles_load(FS_MOUNT_POINT "/config/wifi.json", &profiles);
++        if (result != WIFI_PROFILES_OK && result != WIFI_PROFILES_NOT_FOUND)
++            return ESP_FAIL;
++        if (wifi_profiles_upsert(&profiles, ssid, password) != WIFI_PROFILES_OK)
++            return ESP_FAIL;
++        if (mkdir(FS_MOUNT_POINT "/config", 0700) && errno != EEXIST)
++            return ESP_FAIL;
++        if (wifi_profiles_save(FS_MOUNT_POINT "/config/wifi.json", &profiles) != WIFI_PROFILES_OK)
++            return ESP_FAIL;
++    }
+     nvs_handle_t nvs_handle;
+     esp_err_t err;
+ 
+diff --git a/main/wifi_manager.h b/main/wifi_manager.h
+index 9ae1502..171d2da 100644
+--- a/main/wifi_manager.h
++++ b/main/wifi_manager.h
+@@ -23,6 +23,8 @@ esp_err_t wifi_manager_set_performance_mode(bool enable);
+ // connection test, which drives esp_wifi directly (#43).
+ esp_err_t wifi_manager_apply_ip_config(void);
+ esp_err_t wifi_manager_connect(const char *ssid, const char *password);
++// SD list order is priority; each failed/hidden/unreachable AP has a finite deadline.
++esp_err_t wifi_manager_connect_saved(int per_network_timeout_seconds);
+ esp_err_t wifi_manager_disconnect(void);
+ bool wifi_manager_is_connected(void);
+ esp_err_t wifi_manager_get_ip(char *ip_str, size_t len);
+diff --git a/main/wifi_profiles.c b/main/wifi_profiles.c
+new file mode 100644
+index 0000000..a4e291d
+--- /dev/null
++++ b/main/wifi_profiles.c
+@@ -0,0 +1,213 @@
++#include "wifi_profiles.h"
++
++#include <ctype.h>
++#include <errno.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++#include "cJSON.h"
++
++// cJSON's default recursion limit is much larger than the ESP task stack.
++// Our schema needs only object -> array -> object; reject deeper input first.
++static bool bounded_json_depth(const char *text)
++{
++    unsigned depth = 0;
++    bool quoted = false, escaped = false;
++    for (const char *p = text; *p; ++p) {
++        if (quoted) {
++            if (escaped)
++                escaped = false;
++            else if (*p == '\\')
++                escaped = true;
++            else if (*p == '"')
++                quoted = false;
++        } else if (*p == '"')
++            quoted = true;
++        else if (*p == '{' || *p == '[') {
++            if (++depth > 4)
++                return false;
++        } else if (*p == '}' || *p == ']') {
++            if (!depth)
++                return false;
++            --depth;
++        }
++    }
++    return !depth && !quoted;
++}
++
++bool wifi_profile_valid(const char *ssid, const char *password)
++{
++    if (!ssid || !password || !*ssid || strlen(ssid) > 32)
++        return false;
++    for (const unsigned char *p = (const unsigned char *) ssid; *p; ++p)
++        if (*p < 32 || *p == 127)
++            return false;
++    size_t n = strlen(password);
++    if (n && (n < 8 || n > 64))
++        return false;
++    for (size_t i = 0; i < n; ++i) {
++        unsigned char c = (unsigned char) password[i];
++        if (n == 64 ? !isxdigit(c) : (c < 32 || c > 126))
++            return false;
++    }
++    return true;
++}
++
++int wifi_profiles_try_connect(const wifi_profiles_t *profiles,
++                              bool (*connect)(const wifi_profile_t *, void *), void *context)
++{
++    if (!profiles || !connect || profiles->count > WIFI_PROFILE_LIMIT)
++        return -1;
++    for (size_t i = 0; i < profiles->count; ++i)
++        if (connect(&profiles->items[i], context))
++            return (int) i;
++    return -1;
++}
++
++wifi_profiles_result_t wifi_profiles_upsert(wifi_profiles_t *profiles, const char *ssid,
++                                            const char *password)
++{
++    if (!profiles || profiles->count > WIFI_PROFILE_LIMIT || !wifi_profile_valid(ssid, password))
++        return WIFI_PROFILES_INVALID;
++    size_t index = 0;
++    while (index < profiles->count && strcmp(profiles->items[index].ssid, ssid))
++        ++index;
++    if (index == WIFI_PROFILE_LIMIT)
++        return WIFI_PROFILES_FULL;
++    if (index == profiles->count)
++        ++profiles->count;
++    strcpy(profiles->items[index].ssid, ssid);
++    strcpy(profiles->items[index].password, password);
++    return WIFI_PROFILES_OK;
++}
++
++wifi_profiles_result_t wifi_profiles_load(const char *path, wifi_profiles_t *out)
++{
++    if (!path || !out)
++        return WIFI_PROFILES_INVALID;
++    memset(out, 0, sizeof(*out));
++    FILE *file = fopen(path, "rb");
++    if (!file && errno == ENOENT) {
++        char backup[256];
++        if (snprintf(backup, sizeof(backup), "%s.bak", path) >= (int) sizeof(backup))
++            return WIFI_PROFILES_INVALID;
++        file = fopen(backup, "rb");
++    }
++    if (!file)
++        return errno == ENOENT ? WIFI_PROFILES_NOT_FOUND : WIFI_PROFILES_IO;
++    char *text = calloc(8194, 1);
++    if (!text) {
++        fclose(file);
++        return WIFI_PROFILES_IO;
++    }
++    size_t len = fread(text, 1, 8193, file);
++    bool io_error = ferror(file);
++    fclose(file);
++    if (io_error || len > 8192 || strlen(text) != len || strstr(text, "\\u0000") ||
++        !bounded_json_depth(text)) {
++        free(text);
++        return io_error ? WIFI_PROFILES_IO : WIFI_PROFILES_INVALID;
++    }
++    cJSON *root = cJSON_ParseWithOpts(text, NULL, true);
++    free(text);
++    cJSON *version = cJSON_GetObjectItemCaseSensitive(root, "version");
++    cJSON *networks = cJSON_GetObjectItemCaseSensitive(root, "networks");
++    wifi_profiles_t parsed = {0};
++    bool valid = cJSON_IsNumber(version) && version->valuedouble == 1 && cJSON_IsArray(networks) &&
++                 cJSON_GetArraySize(networks) <= WIFI_PROFILE_LIMIT;
++    if (valid) {
++        cJSON *network;
++        cJSON_ArrayForEach(network, networks)
++        {
++            cJSON *ssid = cJSON_GetObjectItemCaseSensitive(network, "ssid");
++            cJSON *password = cJSON_GetObjectItemCaseSensitive(network, "password");
++            size_t previous = parsed.count;
++            if (!cJSON_IsString(ssid) || !cJSON_IsString(password) ||
++                wifi_profiles_upsert(&parsed, ssid->valuestring, password->valuestring) !=
++                    WIFI_PROFILES_OK ||
++                parsed.count != previous + 1) {
++                valid = false;
++                break;
++            }
++        }
++    }
++    cJSON_Delete(root);
++    if (!valid)
++        return WIFI_PROFILES_INVALID;
++    *out = parsed;
++    return WIFI_PROFILES_OK;
++}
++
++wifi_profiles_result_t wifi_profiles_save(const char *path, const wifi_profiles_t *profiles)
++{
++    if (!path || !profiles || profiles->count > WIFI_PROFILE_LIMIT)
++        return WIFI_PROFILES_INVALID;
++    char temporary[256], backup[256];
++    if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int) sizeof(temporary) ||
++        snprintf(backup, sizeof(backup), "%s.bak", path) >= (int) sizeof(backup))
++        return WIFI_PROFILES_INVALID;
++    cJSON *root = cJSON_CreateObject();
++    if (!root)
++        return WIFI_PROFILES_IO;
++    cJSON *networks = cJSON_AddArrayToObject(root, "networks");
++    bool valid = networks && cJSON_AddNumberToObject(root, "version", 1);
++    for (size_t i = 0; valid && i < profiles->count; ++i) {
++        const wifi_profile_t *p = &profiles->items[i];
++        if (!wifi_profile_valid(p->ssid, p->password)) {
++            cJSON_Delete(root);
++            return WIFI_PROFILES_INVALID;
++        }
++        for (size_t j = 0; j < i; ++j)
++            if (!strcmp(p->ssid, profiles->items[j].ssid)) {
++                cJSON_Delete(root);
++                return WIFI_PROFILES_INVALID;
++            }
++        cJSON *item = cJSON_CreateObject();
++        if (!item) {
++            valid = false;
++            break;
++        }
++        cJSON_AddItemToArray(networks, item);
++        valid = cJSON_AddStringToObject(item, "ssid", p->ssid) &&
++                cJSON_AddStringToObject(item, "password", p->password);
++    }
++    char *text = valid ? cJSON_PrintUnformatted(root) : NULL;
++    cJSON_Delete(root);
++    if (!text)
++        return WIFI_PROFILES_IO;
++    FILE *file = fopen(temporary, "wb");
++    if (!file) {
++        free(text);
++        return WIFI_PROFILES_IO;
++    }
++    bool ok = fwrite(text, 1, strlen(text), file) == strlen(text);
++    free(text);
++    if (fflush(file) || fsync(fileno(file)))
++        ok = false;
++    if (fclose(file))
++        ok = false;
++    if (!ok) {
++        unlink(temporary);
++        return WIFI_PROFILES_IO;
++    }
++    // FAT rename may not replace existing files. Keep a recoverable previous
++    // generation until the new file has been published; boot can read .bak.
++    if (access(path, F_OK) == 0) {
++        if (unlink(backup) && errno != ENOENT) {
++            unlink(temporary);
++            return WIFI_PROFILES_IO;
++        }
++        if (rename(path, backup)) {
++            unlink(temporary);
++            return WIFI_PROFILES_IO;
++        }
++    }
++    if (rename(temporary, path)) {
++        unlink(temporary);
++        return WIFI_PROFILES_IO;
++    }
++    unlink(backup);
++    return WIFI_PROFILES_OK;
++}
+diff --git a/main/wifi_profiles.h b/main/wifi_profiles.h
+new file mode 100644
+index 0000000..7e4f11c
+--- /dev/null
++++ b/main/wifi_profiles.h
+@@ -0,0 +1,29 @@
++#pragma once
++#include <stdbool.h>
++#include <stddef.h>
++
++#define WIFI_PROFILE_LIMIT 10
++typedef struct {
++    char ssid[33];
++    char password[65];
++} wifi_profile_t;
++typedef struct {
++    size_t count;
++    wifi_profile_t items[WIFI_PROFILE_LIMIT];
++} wifi_profiles_t;
++typedef enum {
++    WIFI_PROFILES_OK,
++    WIFI_PROFILES_NOT_FOUND,
++    WIFI_PROFILES_INVALID,
++    WIFI_PROFILES_IO,
++    WIFI_PROFILES_FULL
++} wifi_profiles_result_t;
++
++bool wifi_profile_valid(const char *ssid, const char *password);
++wifi_profiles_result_t wifi_profiles_load(const char *path, wifi_profiles_t *out);
++wifi_profiles_result_t wifi_profiles_save(const char *path, const wifi_profiles_t *profiles);
++wifi_profiles_result_t wifi_profiles_upsert(wifi_profiles_t *profiles, const char *ssid,
++                                            const char *password);
++// Returns the successful profile index, or -1 after trying each entry once.
++int wifi_profiles_try_connect(const wifi_profiles_t *profiles,
++                              bool (*connect)(const wifi_profile_t *, void *), void *context);
+diff --git a/main/wifi_provisioning.c b/main/wifi_provisioning.c
+index 2bed34a..4e018b9 100644
+--- a/main/wifi_provisioning.c
++++ b/main/wifi_provisioning.c
+@@ -1,5 +1,6 @@
+ #include "wifi_provisioning.h"
+ 
++#include <ctype.h>
+ #include <string.h>
+ 
+ #include "config.h"
+@@ -9,6 +10,7 @@
+ #include "esp_http_server.h"
+ #include "esp_log.h"
+ #include "esp_netif.h"
++#include "esp_timer.h"
+ #include "esp_wifi.h"
+ #include "freertos/FreeRTOS.h"
+ #include "freertos/task.h"
+@@ -18,9 +20,16 @@
+ #include "power_manager.h"
+ #include "utils.h"
+ #include "wifi_manager.h"
++#include "wifi_profiles.h"
+ 
+ static const char *TAG = "wifi_prov";
+ static httpd_handle_t provisioning_server = NULL;
++static bool saved_this_session;
++
++bool wifi_provisioning_saved_this_session(void)
++{
++    return saved_this_session;
++}
+ 
+ // Structure to pass credentials to test task
+ typedef struct {
+@@ -317,26 +326,52 @@ static bool get_form_field(const char *buf, const char *key, char *out, size_t o
+             out[o++] = ' ';
+             v++;
+         } else if (*v == '%' && v[1] != '\0' && v[2] != '\0') {
++            if (!isxdigit((unsigned char) v[1]) || !isxdigit((unsigned char) v[2]))
++                return false;
+             char hex[3] = {v[1], v[2], 0};
+-            out[o++] = (char) strtol(hex, NULL, 16);
++            char decoded = (char) strtol(hex, NULL, 16);
++            if (!decoded)
++                return false;
++            out[o++] = decoded;
+             v += 3;
++        } else if (*v == '%') {
++            return false;
+         } else {
+             out[o++] = *v++;
+         }
+     }
+     out[o] = '\0';
+-    return true;
++    return *v == '\0' || *v == '&';
+ }
+ 
+ static esp_err_t provision_save_handler(httpd_req_t *req)
+ {
+-    char buf[512];
+-    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+-    if (ret <= 0) {
+-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data received");
++    char buf[1024];
++    if (req->content_len == 0 || req->content_len >= sizeof(buf)) {
++        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid form body size");
+         return ESP_FAIL;
+     }
+-    buf[ret] = '\0';
++    size_t received = 0;
++    int64_t deadline = esp_timer_get_time() + 10LL * 1000 * 1000;
++    while (received < req->content_len) {
++        if (esp_timer_get_time() >= deadline) {
++            httpd_resp_send_err(req, HTTPD_408_REQ_TIMEOUT, "Form upload timed out");
++            return ESP_FAIL;
++        }
++        int ret = httpd_req_recv(req, buf + received, req->content_len - received);
++        if (ret == HTTPD_SOCK_ERR_TIMEOUT)
++            continue;
++        if (ret <= 0) {
++            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete form body");
++            return ESP_FAIL;
++        }
++        received += ret;
++    }
++    if (memchr(buf, 0, received)) {
++        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid form encoding");
++        return ESP_FAIL;
++    }
++    buf[received] = '\0';
+ 
+     char ssid[WIFI_SSID_MAX_LEN] = {0};
+     char password[WIFI_PASS_MAX_LEN] = {0};
+@@ -351,7 +386,11 @@ static esp_err_t provision_save_handler(httpd_req_t *req)
+         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing SSID");
+         return ESP_FAIL;
+     }
+-    get_form_field(buf, "password", password, sizeof(password));
++    if (!get_form_field(buf, "password", password, sizeof(password)) ||
++        !wifi_profile_valid(ssid, password)) {
++        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid WiFi credentials");
++        return ESP_FAIL;
++    }
+     get_form_field(buf, "deviceName", device_name, sizeof(device_name));
+ 
+     // Use default if device name is empty
+@@ -413,9 +452,9 @@ static esp_err_t provision_save_handler(httpd_req_t *req)
+ 
+     // Configure STA with provided credentials
+     wifi_config_t sta_config = {0};
+-    strncpy((char *) sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid) - 1);
+-    strncpy((char *) sta_config.sta.password, password, sizeof(sta_config.sta.password) - 1);
+-    sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
++    memcpy(sta_config.sta.ssid, ssid, strlen(ssid));
++    memcpy(sta_config.sta.password, password, strlen(password));
++    sta_config.sta.threshold.authmode = *password ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+     sta_config.sta.pmf_cfg.capable = true;
+     sta_config.sta.pmf_cfg.required = false;
+ 
+@@ -432,6 +471,7 @@ static esp_err_t provision_save_handler(httpd_req_t *req)
+     vTaskDelay(pdMS_TO_TICKS(100));
+ 
+     // Try to connect
++    xEventGroupClearBits(wifi_manager_get_event_group(), WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+     esp_wifi_connect();
+ 
+     // Wait for connection result (with timeout)
+@@ -476,6 +516,7 @@ static esp_err_t provision_save_handler(httpd_req_t *req)
+     }
+ 
+     // Save device name
++    saved_this_session = true;
+     config_manager_set_device_name(device_name);
+     ESP_LOGI(TAG, "Device name saved: %s", device_name);
+ 
+@@ -490,6 +531,7 @@ static esp_err_t provision_save_handler(httpd_req_t *req)
+ 
+ esp_err_t wifi_provisioning_init(void)
+ {
++    saved_this_session = false;
+     ESP_LOGI(TAG, "WiFi provisioning initialized");
+     return ESP_OK;
+ }
+@@ -543,6 +585,7 @@ esp_err_t wifi_provisioning_start_ap(void)
+     ESP_LOGI(TAG, "AP IP address set to 192.168.4.1");
+ 
+     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
++    config.stack_size = 8192;
+     config.server_port = 80;
+     config.max_uri_handlers = 16;
+ 
+diff --git a/main/wifi_provisioning.h b/main/wifi_provisioning.h
+index 51dfd58..fee4b7a 100644
+--- a/main/wifi_provisioning.h
++++ b/main/wifi_provisioning.h
+@@ -2,6 +2,7 @@
+ #define WIFI_PROVISIONING_H
+ 
+ #include <stdbool.h>
++bool wifi_provisioning_saved_this_session(void);
+ 
+ #include "esp_err.h"
+ 
+diff --git a/webapp/src/main.js b/webapp/src/main.js
+index c2d0a0b..c4f7d1a 100644
+--- a/webapp/src/main.js
++++ b/webapp/src/main.js
+@@ -3,6 +3,9 @@ import { createPinia } from "pinia";
+ import vuetify from "./plugins/vuetify";
+ import router from "./router";
+ import App from "./App.vue";
++import { installDeviceAuth } from "./utils/deviceAuth";
++
++installDeviceAuth();
+ 
+ const app = createApp(App);
+ const pinia = createPinia();
+diff --git a/webapp/src/utils/deviceAuth.js b/webapp/src/utils/deviceAuth.js
+new file mode 100644
+index 0000000..12d1403
+--- /dev/null
++++ b/webapp/src/utils/deviceAuth.js
+@@ -0,0 +1,27 @@
++// Only same-origin device API calls receive the secret. Never attach it to
++// OpenAI/Google image requests or persist it in localStorage.
++export function installDeviceAuth(target = window) {
++  const originalFetch = target.fetch.bind(target);
++  let token = "";
++  target.fetch = async (input, init) => {
++    const request = new Request(
++      input instanceof Request ? input : new URL(input, target.location.origin),
++      init
++    );
++    const url = new URL(request.url);
++    if (url.origin !== target.location.origin || !url.pathname.startsWith("/api/")) {
++      return originalFetch(request);
++    }
++    const headers = new Headers(request.headers);
++    if (token) headers.set("Authorization", `Bearer ${token}`);
++    const response = await originalFetch(
++      new Request(request.clone(), { headers, redirect: "error" })
++    );
++    if (response.status !== 401) return response;
++    const entered = target.prompt("PhotoFrame authentication code (config/push-token.txt):");
++    if (!entered) return response;
++    token = entered.trim();
++    headers.set("Authorization", `Bearer ${token}`);
++    return originalFetch(new Request(request, { headers, redirect: "error" }));
++  };
++}
+diff --git a/webapp/src/utils/deviceAuth.test.js b/webapp/src/utils/deviceAuth.test.js
+new file mode 100644
+index 0000000..395b00a
+--- /dev/null
++++ b/webapp/src/utils/deviceAuth.test.js
+@@ -0,0 +1,30 @@
++import { describe, it, expect, vi } from "vitest";
++import { installDeviceAuth } from "./deviceAuth";
++
++describe("device authentication", () => {
++  it("retries a 401 with the same body and never leaks the code to another origin", async () => {
++    const seen = [];
++    const target = {
++      location: { origin: "http://frame.local" },
++      prompt: vi.fn(() => "a".repeat(64)),
++      fetch: async (request) => {
++        seen.push({
++          url: request.url,
++          auth: request.headers.get("Authorization"),
++          body: await request.text(),
++        });
++        return new Response("", { status: seen.length === 1 ? 401 : 200 });
++      },
++    };
++    installDeviceAuth(target);
++    await target.fetch("/api/push", { method: "POST", body: "image bytes" });
++    await target.fetch("/api/config");
++    await target.fetch("https://api.example.com/image");
++    expect(seen[0].auth).toBeNull();
++    expect(seen[1].body).toBe("image bytes");
++    expect(seen[1].auth).toBe(`Bearer ${"a".repeat(64)}`);
++    expect(seen[2].auth).toBe(seen[1].auth);
++    expect(seen[3].auth).toBeNull();
++    expect(target.prompt).toHaveBeenCalledTimes(1);
++  });
++});

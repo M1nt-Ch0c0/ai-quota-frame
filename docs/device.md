@@ -1,5 +1,7 @@
 # Waveshare E6 PhotoPainter 接入
 
+> 定制固件（SD 多 Wi-Fi、Bearer 主动 POST 推图）的源码、构建和验收说明见 [firmware/README.md](../firmware/README.md)。以下仍是上游固件的拉图接入说明，不代表定制固件已完成真机验收。
+
 本项目把 OAuth 和 CLIProxyAPI 留在主机上，电子相框只拿一个局域网 Bearer token 请求已渲染的图片：
 
 ```text
