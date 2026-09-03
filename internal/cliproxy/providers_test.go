@@ -373,3 +373,22 @@ func TestFetchXAIParsesOfficialBillingUsagePool(t *testing.T) {
 	assertProviderPercent(t, weekly.RemainingPercent, 63.5, "Grok 7d remaining")
 	assertProviderReset(t, weekly.ResetsAt, "2026-09-06T00:00:00Z")
 }
+
+func TestFetchXAITreatsMissingPercentAfterWeeklyResetAsUnused(t *testing.T) {
+	body := providerFixtureBody(t, "xai_billing_fresh_week.json")
+	client := providerFixtureClient(t, func(request apiCallRequest) apiCallResponse {
+		return providerSuccessResponse(body)
+	})
+
+	windows, plan, err := client.fetchXAI(context.Background(), "xai-auth", map[string]any{"sub": "fixture-user-id"})
+	if err != nil {
+		t.Fatalf("fetchXAI() error = %v", err)
+	}
+	if plan != "" {
+		t.Fatalf("plan = %q, want empty when subscriptionTier is omitted", plan)
+	}
+	weekly := requireProviderWindow(t, windows, "7d")
+	assertProviderPercent(t, weekly.UsedPercent, 0, "fresh Grok week used")
+	assertProviderPercent(t, weekly.RemainingPercent, 100, "fresh Grok week remaining")
+	assertProviderReset(t, weekly.ResetsAt, "2026-09-10T02:13:43Z")
+}

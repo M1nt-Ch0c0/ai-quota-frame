@@ -31,7 +31,8 @@ const (
 
 // fetchXAI reads the shared Grok usage pool exposed by the official Grok Build
 // billing client. Current consumer accounts report a weekly period and a used
-// percentage; older responses may expose the legacy monthly limit instead.
+// percentage; a fresh week may omit the percentage until credits are consumed.
+// Older responses may expose the legacy monthly limit instead.
 func (client *Client) fetchXAI(ctx context.Context, authIndex string, entry map[string]any) ([]quota.Window, string, error) {
 	userID, err := client.xaiUserID(ctx, entry)
 	if err != nil {
@@ -62,21 +63,38 @@ func (client *Client) fetchXAI(ctx context.Context, authIndex string, entry map[
 	if config == nil {
 		return nil, "", errors.New("Grok billing response contained no config")
 	}
+	period := mapValue(firstNonNil(config["currentPeriod"], config["current_period"]))
 	used, ok := percentage(firstNonNil(config["creditUsagePercent"], config["credit_usage_percent"]))
 	if !ok {
 		limit, hasLimit := number(nested(firstNonNil(config["monthlyLimit"], config["monthly_limit"]), "val"))
 		legacyUsed, hasUsed := number(nested(config["used"], "val"))
-		if !hasLimit || limit <= 0 || !hasUsed || legacyUsed < 0 {
-			return nil, "", errors.New("Grok billing response contained no usable usage percentage")
-		}
-		used = legacyUsed / limit * 100
-		if used > 100 {
-			used = 100
+		if hasLimit && limit > 0 && hasUsed && legacyUsed >= 0 {
+			used = legacyUsed / limit * 100
+			if used > 100 {
+				used = 100
+			}
+			ok = true
 		}
 	}
-
-	period := mapValue(firstNonNil(config["currentPeriod"], config["current_period"]))
-	periodType := strings.ToUpper(strings.TrimSpace(firstString(period["type"])))
+	// After a weekly reset Grok omits creditUsagePercent until some
+	// credits are consumed. A dated current period still means a fresh pool.
+	if !ok {
+		var periodMarker any
+		if period != nil {
+			periodMarker = firstNonNil(period["end"], period["start"])
+		}
+		if periodMarker == nil {
+			periodMarker = firstNonNil(config["billingPeriodEnd"], config["billing_period_end"])
+		}
+		if periodMarker == nil {
+			return nil, "", errors.New("Grok billing response contained no usable usage percentage")
+		}
+		used = 0
+	}
+	periodType := ""
+	if period != nil {
+		periodType = strings.ToUpper(strings.TrimSpace(firstString(period["type"])))
+	}
 	id, label := "period", "period"
 	switch {
 	case strings.Contains(periodType, "WEEKLY"):
@@ -84,7 +102,10 @@ func (client *Client) fetchXAI(ctx context.Context, authIndex string, entry map[
 	case strings.Contains(periodType, "MONTHLY"):
 		id, label = "30d", "30d"
 	}
-	resetValue := firstNonNil(period["end"], config["billingPeriodEnd"], config["billing_period_end"])
+	resetValue := firstNonNil(config["billingPeriodEnd"], config["billing_period_end"])
+	if period != nil {
+		resetValue = firstNonNil(period["end"], resetValue)
+	}
 	window := quota.Window{
 		ID:               id,
 		Label:            label,
