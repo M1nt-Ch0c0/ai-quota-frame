@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.24-bookworm AS build
+FROM golang:1.26-bookworm AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -16,6 +16,5 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates chromium \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/ai-quota-frame /usr/local/bin/ai-quota-frame
-EXPOSE 8787
 USER nobody
 ENTRYPOINT ["/usr/local/bin/ai-quota-frame"]

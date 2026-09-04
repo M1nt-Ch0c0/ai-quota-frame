@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -13,20 +13,19 @@ import (
 )
 
 type Config struct {
-	ListenAddr       string
-	CLIProxyBaseURL  string
-	ManagementKey    string
-	FrameAccessToken string
-	CPAMPBaseURL     string
-	CPAMPAdminKey    string
-	DisplayProviders []dashboard.DisplayProvider
-	RefreshInterval  time.Duration
-	PassiveMaxAge    time.Duration
-	RequestTimeout   time.Duration
-	MaxConcurrency   int
-	Location         *time.Location
-	DemoMode         bool
-	AllowNoToken     bool
+	CLIProxyBaseURL     string
+	ManagementKey       string
+	PhotoFramePushURL   string
+	PhotoFramePushToken string
+	CPAMPBaseURL        string
+	CPAMPAdminKey       string
+	DisplayProviders    []dashboard.DisplayProvider
+	RefreshInterval     time.Duration
+	PassiveMaxAge       time.Duration
+	RequestTimeout      time.Duration
+	MaxConcurrency      int
+	Location            *time.Location
+	DemoMode            bool
 }
 
 func FromEnv() (Config, error) {
@@ -53,11 +52,6 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	allowNoToken, err := envBool("ALLOW_INSECURE_NO_TOKEN", false)
-	if err != nil {
-		return Config{}, err
-	}
-
 	timezone := envString("TZ", "Asia/Shanghai")
 	location, err := time.LoadLocation(timezone)
 	if err != nil {
@@ -69,20 +63,19 @@ func FromEnv() (Config, error) {
 	}
 
 	config := Config{
-		ListenAddr:       envString("LISTEN_ADDR", ":8787"),
-		CLIProxyBaseURL:  strings.TrimRight(envString("CLIPROXY_BASE_URL", "http://127.0.0.1:8317"), "/"),
-		ManagementKey:    strings.TrimSpace(os.Getenv("CLIPROXY_MANAGEMENT_KEY")),
-		FrameAccessToken: strings.TrimSpace(os.Getenv("FRAME_ACCESS_TOKEN")),
-		DisplayProviders: providers,
-		RefreshInterval:  refreshInterval,
-		PassiveMaxAge:    passiveMaxAge,
-		RequestTimeout:   requestTimeout,
-		MaxConcurrency:   maxConcurrency,
-		Location:         location,
-		DemoMode:         demoMode,
-		AllowNoToken:     allowNoToken,
-		CPAMPBaseURL:     strings.TrimRight(envString("CPAMP_BASE_URL", ""), "/"),
-		CPAMPAdminKey:    strings.TrimSpace(os.Getenv("CPAMP_ADMIN_KEY")),
+		CLIProxyBaseURL:     strings.TrimRight(envString("CLIPROXY_BASE_URL", "http://127.0.0.1:8317"), "/"),
+		ManagementKey:       strings.TrimSpace(os.Getenv("CLIPROXY_MANAGEMENT_KEY")),
+		PhotoFramePushURL:   strings.TrimSpace(os.Getenv("PHOTOFRAME_PUSH_URL")),
+		PhotoFramePushToken: os.Getenv("PHOTOFRAME_PUSH_TOKEN"),
+		DisplayProviders:    providers,
+		RefreshInterval:     refreshInterval,
+		PassiveMaxAge:       passiveMaxAge,
+		RequestTimeout:      requestTimeout,
+		MaxConcurrency:      maxConcurrency,
+		Location:            location,
+		DemoMode:            demoMode,
+		CPAMPBaseURL:        strings.TrimRight(envString("CPAMP_BASE_URL", ""), "/"),
+		CPAMPAdminKey:       strings.TrimSpace(os.Getenv("CPAMP_ADMIN_KEY")),
 	}
 
 	if config.RefreshInterval < time.Minute {
@@ -97,14 +90,25 @@ func FromEnv() (Config, error) {
 	if !config.DemoMode && config.ManagementKey == "" {
 		return Config{}, errors.New("CLIPROXY_MANAGEMENT_KEY is required")
 	}
-	if config.FrameAccessToken == "" && !config.AllowNoToken {
-		return Config{}, errors.New("FRAME_ACCESS_TOKEN is required; set ALLOW_INSECURE_NO_TOKEN=true only for isolated development")
+	if config.PhotoFramePushURL == "" || config.PhotoFramePushToken == "" {
+		return Config{}, errors.New("PHOTOFRAME_PUSH_URL and PHOTOFRAME_PUSH_TOKEN are required")
 	}
-	if !config.DemoMode && config.FrameAccessToken != "" && config.FrameAccessToken == config.ManagementKey {
-		return Config{}, errors.New("FRAME_ACCESS_TOKEN must be different from CLIPROXY_MANAGEMENT_KEY")
+	if err := validatePhotoFramePushURL(config.PhotoFramePushURL); err != nil {
+		return Config{}, err
 	}
-	if config.AllowNoToken && config.FrameAccessToken == "" && !isLoopbackListenAddress(config.ListenAddr) {
-		return Config{}, errors.New("ALLOW_INSECURE_NO_TOKEN requires LISTEN_ADDR to use an explicit loopback host")
+	if err := validatePhotoFramePushToken(config.PhotoFramePushToken); err != nil {
+		return Config{}, err
+	}
+	for _, secret := range []struct {
+		name  string
+		value string
+	}{
+		{name: "CLIPROXY_MANAGEMENT_KEY", value: config.ManagementKey},
+		{name: "CPAMP_ADMIN_KEY", value: config.CPAMPAdminKey},
+	} {
+		if secret.value != "" && config.PhotoFramePushToken == secret.value {
+			return Config{}, fmt.Errorf("PHOTOFRAME_PUSH_TOKEN must be different from %s", secret.name)
+		}
 	}
 	if config.CPAMPAdminKey != "" && config.CPAMPBaseURL == "" {
 		config.CPAMPBaseURL = "http://127.0.0.1:18317"
@@ -115,17 +119,36 @@ func FromEnv() (Config, error) {
 	return config, nil
 }
 
-func isLoopbackListenAddress(address string) bool {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(address))
-	if err != nil {
-		return false
+func validatePhotoFramePushURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" {
+		return errors.New("PHOTOFRAME_PUSH_URL must be an absolute HTTP(S) URL")
 	}
-	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
-	if host == "localhost" {
-		return true
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("PHOTOFRAME_PUSH_URL must use http or https")
 	}
-	parsed := net.ParseIP(host)
-	return parsed != nil && parsed.IsLoopback()
+	if parsed.User != nil {
+		return errors.New("PHOTOFRAME_PUSH_URL must not contain credentials")
+	}
+	if parsed.EscapedPath() != "/api/push" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Contains(rawURL, "#") {
+		return errors.New("PHOTOFRAME_PUSH_URL must be a complete /api/push URL without query or fragment")
+	}
+	return nil
+}
+
+func validatePhotoFramePushToken(token string) error {
+	if strings.HasPrefix(strings.ToLower(token), "replace-with-") {
+		return errors.New("PHOTOFRAME_PUSH_TOKEN placeholder must be replaced")
+	}
+	if len(token) < 32 || len(token) > 128 {
+		return errors.New("PHOTOFRAME_PUSH_TOKEN must be 32..128 printable ASCII bytes")
+	}
+	for index := 0; index < len(token); index++ {
+		if token[index] < 0x21 || token[index] > 0x7e {
+			return errors.New("PHOTOFRAME_PUSH_TOKEN must use printable ASCII without whitespace")
+		}
+	}
+	return nil
 }
 
 func envString(name, fallback string) string {

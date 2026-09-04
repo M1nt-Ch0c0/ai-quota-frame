@@ -2,20 +2,18 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 	_ "time/tzdata"
 
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/cliproxy"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/config"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
-	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/httpapi"
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/frame"
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/push"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/service"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/usage"
 )
@@ -29,6 +27,10 @@ func run() int {
 	configuration, err := config.FromEnv()
 	if err != nil {
 		logger.Error("invalid configuration", "error", err)
+		return 2
+	}
+	if err := dashboard.CheckChrome(); err != nil {
+		logger.Error("Chrome preflight failed", "error", err)
 		return 2
 	}
 
@@ -74,76 +76,31 @@ func run() int {
 		return 2
 	}
 	renderer.SetDisplayProviders(configuration.DisplayProviders)
-	api := httpapi.New(quotaService, renderer, configuration.FrameAccessToken, configuration.AllowNoToken)
+	frameProducer := frame.NewProducer(renderer)
+	photoFramePusher := push.New(
+		configuration.PhotoFramePushURL,
+		configuration.PhotoFramePushToken,
+		frameProducer,
+		logger,
+	)
+	quotaService.SetRefreshObserver(photoFramePusher.ObserveRefresh)
+	logger.Info("PhotoPainter active push enabled")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	var quotaWorkers sync.WaitGroup
-	quotaWorkers.Add(1)
+	var backgroundWorkers sync.WaitGroup
+	backgroundWorkers.Add(1)
 	go func() {
-		defer quotaWorkers.Done()
+		defer backgroundWorkers.Done()
+		photoFramePusher.Run(ctx)
+	}()
+	backgroundWorkers.Add(1)
+	go func() {
+		defer backgroundWorkers.Done()
 		quotaService.Run(ctx)
 	}()
 
-	server := &http.Server{
-		Addr:              configuration.ListenAddr,
-		Handler:           requestLog(logger, api.Handler()),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
-	serverErrors := make(chan error, 1)
-	go func() {
-		logger.Info("AI quota frame server started", "listen", configuration.ListenAddr, "demo", configuration.DemoMode)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErrors <- err
-			return
-		}
-		serverErrors <- nil
-	}()
-
-	var listenErr error
-	select {
-	case <-ctx.Done():
-	case listenErr = <-serverErrors:
-		if listenErr != nil {
-			logger.Error("HTTP server failed", "error", listenErr)
-		}
-		stop()
-	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("HTTP shutdown failed", "error", err)
-	}
-	quotaWorkers.Wait()
-	if listenErr != nil {
-		return 1
-	}
+	<-ctx.Done()
+	backgroundWorkers.Wait()
 	return 0
-}
-
-func requestLog(logger *slog.Logger, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		started := time.Now()
-		recorder := &statusRecorder{ResponseWriter: response, status: http.StatusOK}
-		next.ServeHTTP(recorder, request)
-		logger.Info("HTTP request",
-			"method", request.Method,
-			"path", request.URL.Path,
-			"status", recorder.status,
-			"duration_ms", time.Since(started).Milliseconds(),
-		)
-	})
-}
-
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (recorder *statusRecorder) WriteHeader(status int) {
-	recorder.status = status
-	recorder.ResponseWriter.WriteHeader(status)
 }

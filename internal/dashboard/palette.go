@@ -25,8 +25,8 @@ type E6Palette struct {
 	Green  RGB
 }
 
-// TheoreticalE6Palette is the exact output palette recognized by the
-// PhotoFrame v2.18 processed-PNG fast path.
+// TheoreticalE6Palette is the exact raw-PNG palette consumed by the self-built
+// photoframe component.
 var TheoreticalE6Palette = E6Palette{
 	Black:  RGB{R: 0, G: 0, B: 0},
 	White:  RGB{R: 255, G: 255, B: 255},

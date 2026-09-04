@@ -406,3 +406,54 @@ func TestRefreshAttachesUsageAndRetainsItOnCollectorFailure(t *testing.T) {
 		t.Fatalf("snapshot.Usage after collector failure = %+v, want retained value", snapshot.Usage)
 	}
 }
+
+func TestRefreshObserverSeesSuccessAndFailureWithIsolatedSnapshots(t *testing.T) {
+	upstreamErr := errors.New("upstream unavailable")
+	remaining := 80.0
+	fetcher := &sequenceFetcher{results: []fetchResult{
+		{accounts: []quota.Account{{
+			Provider: "codex", Name: "account", Status: "ok",
+			Windows: []quota.Window{{ID: "5h", RemainingPercent: &remaining}},
+		}}},
+		{err: upstreamErr},
+		{accounts: []quota.Account{{
+			Provider: "codex", Name: "account", Status: "ok",
+			Windows: []quota.Window{{ID: "5h", RemainingPercent: &remaining}},
+		}}},
+	}}
+	service := New(fetcher, time.Minute)
+	type refreshEvent struct {
+		snapshot   quota.Snapshot
+		successful bool
+	}
+	var observed []refreshEvent
+	service.SetRefreshObserver(func(snapshot quota.Snapshot, successful bool) {
+		observed = append(observed, refreshEvent{snapshot: snapshot, successful: successful})
+		if len(snapshot.Accounts) > 0 {
+			snapshot.Accounts[0].Name = "observer mutation"
+		}
+	})
+
+	if err := service.Refresh(context.Background()); err != nil {
+		t.Fatalf("first Refresh() error = %v", err)
+	}
+	if err := service.Refresh(context.Background()); !errors.Is(err, upstreamErr) {
+		t.Fatalf("failed Refresh() error = %v, want %v", err, upstreamErr)
+	}
+	if err := service.Refresh(context.Background()); err != nil {
+		t.Fatalf("third Refresh() error = %v", err)
+	}
+	if len(observed) != 3 {
+		t.Fatalf("refresh observer calls = %d, want one event per completed refresh", len(observed))
+	}
+	if !observed[0].successful || observed[1].successful || !observed[2].successful {
+		t.Fatalf("refresh success sequence = %v/%v/%v, want true/false/true", observed[0].successful, observed[1].successful, observed[2].successful)
+	}
+	if !observed[1].snapshot.Stale || len(observed[1].snapshot.Errors) != 1 || observed[1].snapshot.Errors[0] != upstreamErr.Error() {
+		t.Fatalf("failed refresh event = %#v, want isolated stale/error snapshot", observed[1].snapshot)
+	}
+	snapshot, ready := service.Snapshot()
+	if !ready || len(snapshot.Accounts) != 1 || snapshot.Accounts[0].Name != "account" {
+		t.Fatalf("observer mutated service snapshot: ready=%v snapshot=%#v", ready, snapshot)
+	}
+}

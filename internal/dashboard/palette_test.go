@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestQuantizeTheoreticalE6ProducesFirmwareFastPathPNG(t *testing.T) {
+func TestQuantizeTheoreticalE6ProducesPhotoframeContractPNG(t *testing.T) {
 	source := image.NewNRGBA(image.Rect(0, 0, Width, Height))
 	colors := []color.NRGBA{
 		{R: 0, G: 0, B: 0, A: 255},
@@ -32,7 +32,7 @@ func TestQuantizeTheoreticalE6ProducesFirmwareFastPathPNG(t *testing.T) {
 		t.Fatalf("QuantizeTheoreticalE6() error = %v", err)
 	}
 
-	assertFastPathPNGHeader(t, result, Width, Height)
+	assertPhotoframePNGHeader(t, result, Width, Height)
 	decoded, err := png.Decode(bytes.NewReader(result))
 	if err != nil {
 		t.Fatalf("png.Decode() error = %v", err)
@@ -129,7 +129,7 @@ func encodeTestPNG(t *testing.T, source image.Image) []byte {
 	return encoded.Bytes()
 }
 
-func assertFastPathPNGHeader(t *testing.T, payload []byte, width, height int) {
+func assertPhotoframePNGHeader(t *testing.T, payload []byte, width, height int) {
 	t.Helper()
 	if len(payload) < 29 || !bytes.Equal(payload[:8], []byte("\x89PNG\r\n\x1a\n")) {
 		t.Fatal("output is not a valid PNG header")

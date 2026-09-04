@@ -26,13 +26,14 @@ type Service struct {
 	usageFetcher UsageFetcher
 	interval     time.Duration
 
-	refreshMu   sync.Mutex
-	mu          sync.RWMutex
-	snapshot    quota.Snapshot
-	fingerprint [sha256.Size]byte
-	hasData     bool
-	ready       bool
-	now         func() time.Time
+	refreshMu       sync.Mutex
+	mu              sync.RWMutex
+	snapshot        quota.Snapshot
+	fingerprint     [sha256.Size]byte
+	hasData         bool
+	ready           bool
+	refreshObserver func(quota.Snapshot, bool)
+	now             func() time.Time
 }
 
 // SetUsageFetcher attaches the optional usage collector client. Call it
@@ -40,6 +41,16 @@ type Service struct {
 // previous usage section.
 func (service *Service) SetUsageFetcher(fetcher UsageFetcher) {
 	service.usageFetcher = fetcher
+}
+
+// SetRefreshObserver installs a non-blocking callback invoked with an isolated
+// snapshot after every completed refresh. successful is false when the
+// upstream refresh failed; sinks can use that event to discard obsolete work
+// without publishing the failed snapshot.
+func (service *Service) SetRefreshObserver(observer func(quota.Snapshot, bool)) {
+	service.mu.Lock()
+	service.refreshObserver = observer
+	service.mu.Unlock()
 }
 
 func New(fetcher Fetcher, interval time.Duration) *Service {
@@ -83,7 +94,6 @@ func (service *Service) Refresh(ctx context.Context) error {
 	now := service.now().UTC()
 
 	service.mu.Lock()
-	defer service.mu.Unlock()
 
 	next := now.Add(service.interval)
 	if err != nil {
@@ -97,6 +107,12 @@ func (service *Service) Refresh(ctx context.Context) error {
 				service.snapshot.Usage = usage
 			}
 			service.updateFingerprintLocked(now)
+			observer := service.refreshObserver
+			failedSnapshot := cloneSnapshot(service.snapshot)
+			service.mu.Unlock()
+			if observer != nil {
+				observer(failedSnapshot, false)
+			}
 			return err
 		}
 		service.snapshot = quota.Snapshot{
@@ -110,6 +126,12 @@ func (service *Service) Refresh(ctx context.Context) error {
 		}
 		service.hasData = true
 		service.fingerprint = semanticFingerprint(service.snapshot)
+		observer := service.refreshObserver
+		failedSnapshot := cloneSnapshot(service.snapshot)
+		service.mu.Unlock()
+		if observer != nil {
+			observer(failedSnapshot, false)
+		}
 		return err
 	}
 
@@ -141,6 +163,12 @@ func (service *Service) Refresh(ctx context.Context) error {
 	service.fingerprint = nextFingerprint
 	service.hasData = true
 	service.ready = true
+	observer := service.refreshObserver
+	readySnapshot := cloneSnapshot(service.snapshot)
+	service.mu.Unlock()
+	if observer != nil {
+		observer(readySnapshot, true)
+	}
 	return nil
 }
 
@@ -176,12 +204,16 @@ func (service *Service) Snapshot() (quota.Snapshot, bool) {
 	if !service.hasData {
 		return quota.Snapshot{}, false
 	}
-	copySnapshot := service.snapshot
-	copySnapshot.LastFreshAt = cloneTime(service.snapshot.LastFreshAt)
-	copySnapshot.Accounts = cloneAccounts(service.snapshot.Accounts)
-	copySnapshot.Errors = append([]string(nil), service.snapshot.Errors...)
-	copySnapshot.Usage = cloneUsage(service.snapshot.Usage)
-	return copySnapshot, service.ready
+	return cloneSnapshot(service.snapshot), service.ready
+}
+
+func cloneSnapshot(snapshot quota.Snapshot) quota.Snapshot {
+	copySnapshot := snapshot
+	copySnapshot.LastFreshAt = cloneTime(snapshot.LastFreshAt)
+	copySnapshot.Accounts = cloneAccounts(snapshot.Accounts)
+	copySnapshot.Errors = append([]string(nil), snapshot.Errors...)
+	copySnapshot.Usage = cloneUsage(snapshot.Usage)
+	return copySnapshot
 }
 
 func cloneTime(value *time.Time) *time.Time {
@@ -328,12 +360,18 @@ func semanticFingerprint(snapshot quota.Snapshot) [sha256.Size]byte {
 			window := &accounts[accountIndex].Windows[windowIndex]
 			window.UsedPercent = nil
 			window.ObservedAt = nil
-			window.Source = ""
+			if window.Source != "demo" {
+				window.Source = ""
+			}
 			if window.ResetsAt != nil {
 				value := window.ResetsAt.UTC().Truncate(time.Minute)
 				window.ResetsAt = &value
 			}
 		}
+	}
+	usage := cloneUsage(snapshot.Usage)
+	if usage != nil && usage.Source != "demo" {
+		usage.Source = ""
 	}
 	payload := struct {
 		Stale    bool            `json:"stale"`
@@ -343,7 +381,7 @@ func semanticFingerprint(snapshot quota.Snapshot) [sha256.Size]byte {
 	}{
 		Stale:    snapshot.Stale,
 		Accounts: accounts,
-		Usage:    cloneUsage(snapshot.Usage),
+		Usage:    usage,
 		Errors:   snapshot.Errors,
 	}
 	encoded, _ := json.Marshal(payload)

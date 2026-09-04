@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"image/png"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,13 +72,6 @@ func (renderer *Renderer) Render(snapshot quota.Snapshot) ([]byte, error) {
 	return quantized, nil
 }
 
-// RenderSixColor renders the dashboard to the exact theoretical Spectra 6
-// palette recognized by the PhotoFrame processed-PNG fast path. Render uses
-// this format by default so every production caller gets the no-dither image.
-func (renderer *Renderer) RenderSixColor(snapshot quota.Snapshot) ([]byte, error) {
-	return renderer.Render(snapshot)
-}
-
 func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {
 	data := buildFrameData(snapshot, renderer.location, renderer.providers)
 	var buffer bytes.Buffer
@@ -133,7 +127,7 @@ func screenshotHTML(html string) ([]byte, error) {
 	ctx, cancelTimeout := context.WithTimeout(ctx, 20*time.Second)
 	defer cancelTimeout()
 
-	fileURL := "file://" + pagePath
+	fileURL := localFileURL(pagePath)
 	var pngBytes []byte
 	if err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(int64(Width), int64(Height), chromedp.EmulateScale(1)),
@@ -149,9 +143,31 @@ func screenshotHTML(html string) ([]byte, error) {
 	return pngBytes, nil
 }
 
+func localFileURL(filePath string) string {
+	slashPath := strings.ReplaceAll(filePath, `\`, "/")
+	if len(slashPath) >= 2 && slashPath[1] == ':' {
+		slashPath = "/" + slashPath
+	}
+	return (&url.URL{Scheme: "file", Path: slashPath}).String()
+}
+
+// CheckChrome verifies that a browser executable is available before the
+// service starts its refresh loop. It intentionally does not launch Chrome;
+// rendering remains the end-to-end browser check.
+func CheckChrome() error {
+	if chromeExecPath() == "" {
+		return fmt.Errorf("Chromium or Google Chrome was not found; install one or set CHROME_BIN to an executable path")
+	}
+	return nil
+}
+
 func chromeExecPath() string {
 	if path := strings.TrimSpace(os.Getenv("CHROME_BIN")); path != "" {
-		return path
+		resolved, err := exec.LookPath(path)
+		if err != nil {
+			return ""
+		}
+		return resolved
 	}
 	for _, name := range []string{"chromium", "chromium-browser", "google-chrome-stable", "google-chrome"} {
 		if path, err := exec.LookPath(name); err == nil && strings.TrimSpace(path) != "" {
@@ -172,7 +188,11 @@ func chromeExecPath() string {
 			continue
 		}
 		sort.Strings(found)
-		return found[len(found)-1]
+		for index := len(found) - 1; index >= 0; index-- {
+			if resolved, err := exec.LookPath(found[index]); err == nil {
+				return resolved
+			}
+		}
 	}
 	return ""
 }

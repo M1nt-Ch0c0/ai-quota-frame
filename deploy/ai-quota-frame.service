@@ -1,5 +1,5 @@
 [Unit]
-Description=AI quota dashboard for Waveshare PhotoPainter
+Description=AI quota frame active pusher for PhotoPainter
 Wants=network-online.target
 After=network-online.target
 

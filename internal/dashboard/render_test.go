@@ -18,6 +18,42 @@ func chromeAvailable() bool {
 	return chromeExecPath() != ""
 }
 
+func TestCheckChromeRejectsMissingConfiguredExecutable(t *testing.T) {
+	t.Setenv("CHROME_BIN", filepath.Join(t.TempDir(), "missing-chrome"))
+	if err := CheckChrome(); err == nil || !strings.Contains(err.Error(), "CHROME_BIN") {
+		t.Fatalf("CheckChrome() error = %v, want CHROME_BIN guidance", err)
+	}
+}
+
+func TestCheckChromeAcceptsConfiguredBrowser(t *testing.T) {
+	path := chromeExecPath()
+	if path == "" {
+		t.Skip("chromium or google-chrome is required for Chrome preflight test")
+	}
+	t.Setenv("CHROME_BIN", path)
+	if err := CheckChrome(); err != nil {
+		t.Fatalf("CheckChrome() error = %v", err)
+	}
+}
+
+func TestLocalFileURLHandlesUnixAndWindowsPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		filePath string
+		want     string
+	}{
+		{name: "Unix", filePath: "/tmp/frame preview.html", want: "file:///tmp/frame%20preview.html"},
+		{name: "Windows", filePath: `C:\Users\Photo Frame\frame.html`, want: "file:///C:/Users/Photo%20Frame/frame.html"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := localFileURL(test.filePath); got != test.want {
+				t.Fatalf("localFileURL(%q) = %q, want %q", test.filePath, got, test.want)
+			}
+		})
+	}
+}
+
 func TestRenderHTMLProducesDocument(t *testing.T) {
 	renderer, err := New(time.UTC)
 	if err != nil {
