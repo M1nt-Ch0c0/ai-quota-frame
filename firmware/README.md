@@ -7,6 +7,14 @@
 
 详细测试范围、镜像校验值和未完成项见 [验证记录](VERIFICATION.md)。
 
+## 直接下载刷写包（推荐用于个人验证）
+
+[下载开发预发布包](https://github.com/M1nt-Ch0c0/ai-quota-frame/releases/tag/firmware-sd-wifi-push-v0.1.0-dev.1)，选择 `photopainter73-sd-wifi-push-dev.zip`，不要误选 GitHub 自动生成的 Source code。
+
+解压后按包内 `README.md` 操作；同一份说明也可在线查看：[备份、刷写、SD 配置与验证](FLASHING.md)。刷写包包含已编译镜像、校验文件、演示 PNG、推图和验收脚本，不需要安装 ESP-IDF 来重新编译。
+
+这是未完成真机验收的预发布版，不修改主干，不建议无人值守部署。验证后请反馈硬件型号、启动日志、两组 Wi-Fi 切换结果、HTTP 状态码和屏幕照片；请勿发送 Wi-Fi 密码或推图码。
+
 ## SD 卡配置
 
 在 FAT32 SD 卡创建 `config/wifi.json`，格式参见 `wifi.example.json`：
