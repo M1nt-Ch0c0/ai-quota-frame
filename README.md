@@ -2,6 +2,8 @@
 
 > **AI / 开发者入口：**先阅读 [`AGENTS.md`](AGENTS.md)。空白电脑部署、三仓联调和真机诊断使用 [`develop-photopainter-stack`](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/.agents/skills/develop-photopainter-stack/SKILL.md)。
 
+四个仓库的职责、架构图、耦合边界与修改影响，见 [PhotoPainter 架构总览](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/ARCHITECTURE.md)。
+
 `ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并主动 `POST` 原始 PNG 到常亮的 ESP32-S3 PhotoPainter。设备不再轮询主机，也不使用相册、WebUI、OTA、Home Assistant 或深睡眠流程。
 
 ## 刷写
