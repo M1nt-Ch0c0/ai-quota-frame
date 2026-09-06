@@ -55,3 +55,46 @@ set +a
 设备未配置推图码时返回 `503`，缺失或错误码返回 `401`，请求体超过 5 MiB 返回 `413`；这些失败请求不得改变屏幕。主机不会在日志中输出推图码，也不会把 OAuth token、management key 或用量采集密钥发送到相框。
 
 不要提交 `.env`、设备密钥、Flash/SD 备份或含密钥的命令输出。相框只应位于受信局域网，禁止把设备的 HTTP 端口映射到公网。
+
+## macOS 常驻运行
+
+先配置忽略的 `.env` 并执行 `make check`，再运行：
+
+```sh
+python3 deploy/install-macos.py --env-file .env
+```
+
+首次调试尚未取得实体刷屏成功时，使用 `--no-start` 只安装并禁用自动启动；确认刷屏成功后重新运行不带该参数的安装命令。
+
+安装器使用 Xcode Command Line Tools 编译本地启动器，在 `~/Applications/PhotoPainter Renderer.app` 建立应用身份，并更新用户级 `com.m1ntch0c0.ai-quota-frame` LaunchAgent，登录自动启动，异常退出后重启。应用声明 `NSLocalNetworkUsageDescription`，LaunchAgent 通过 `AssociatedBundleIdentifiers` 关联应用，遵循 [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)。首次出现本地网络提示时允许其访问相框；若出现 `no route to host`，同时检查实际 Wi-Fi 路由和“隐私与安全性 → 本地网络”，不能仅凭这个错误断定是权限问题。凭据只保存在权限 0600 的本地配置文件中。运行期间通过 `caffeinate` 阻止空闲休眠，日志位于 `~/Library/Logs/photopainter-render.log`。硬件诊断或模块升级前先 `launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame` 停止自动推图。
+
+远端管理接口通过 SSH loopback 转发连接，本机 28317、28318 分别转发至远端 8317、18317。先在本机 SSH 配置中建立 `photopainter-source` 别名，设置真实服务器、登录用户及已有密钥，并核验服务器主机指纹。确认无需交互认证：
+
+```sh
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes photopainter-source true
+python3 deploy/install-source-tunnel.py --ssh-host photopainter-source
+```
+
+安装器不创建或复制 SSH 密钥，保持主机密钥校验，只监听 loopback；隧道登录启动、断线自动重连。`--dry-run` 只打印待安装 plist。将 `.env` 中 `CLIPROXY_BASE_URL` 设为 `http://127.0.0.1:28317`，`CPAMP_BASE_URL` 设为 `http://127.0.0.1:28318`，分别填写远端管理凭据。不要公开管理端口。建议 `REFRESH_INTERVAL=5m`、`DEMO_MODE=false`、`TZ=Asia/Shanghai`；机器必须保持开机、登录和联网。
+
+检查和维护：
+
+```sh
+launchctl print gui/$(id -u)/com.m1ntch0c0.photopainter-source-tunnel
+launchctl print gui/$(id -u)/com.m1ntch0c0.ai-quota-frame
+# 停止自动推送，再进行硬件或模块操作：
+launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame
+# 恢复已安装的服务（不会替换文件）：
+launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.m1ntch0c0.ai-quota-frame.plist"
+```
+
+若曾用 `--no-start` 禁用服务，先 `launchctl enable gui/$(id -u)/com.m1ntch0c0.ai-quota-frame`，或重新运行安装器。正常日志 `photopainter-render.log` 中的 `frame pushed` 表示收到设备 HTTP 200；错误日志为同目录 `photopainter-render.error.log`，隧道日志使用 `photopainter-source-tunnel` 前缀。查看日志时注意保护管理端返回的敏感内容。停用并取消登录启动可执行 `launchctl disable` 后 `bootout`；二进制和凭据仍保留在本机运行目录。
+
+只生成一张真实数据预览、不向设备推送：
+
+```sh
+set -a
+. ./.env
+set +a
+go run ./cmd/render-frame --output frame.png
+```

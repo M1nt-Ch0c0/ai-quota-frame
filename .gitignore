@@ -2,3 +2,6 @@
 dist/
 coverage.out
 /ai-quota-frame
+
+__pycache__/
+*.py[cod]
