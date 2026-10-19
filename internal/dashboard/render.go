@@ -23,6 +23,9 @@ import (
 const (
 	Width  = 800
 	Height = 480
+
+	renderTimeout       = 20 * time.Second
+	browserCloseTimeout = 5 * time.Second
 )
 
 type Renderer struct {
@@ -113,6 +116,7 @@ func screenshotHTML(html string) ([]byte, error) {
 		chromedp.Flag("hide-scrollbars", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.ModifyCmdFunc(prepareBrowserCommand),
 	)
 	if chromePath := chromeExecPath(); chromePath != "" {
 		allocatorOptions = append(allocatorOptions, chromedp.ExecPath(chromePath))
@@ -121,11 +125,15 @@ func screenshotHTML(html string) ([]byte, error) {
 	allocatorCtx, cancelAllocator := chromedp.NewExecAllocator(context.Background(), allocatorOptions...)
 	defer cancelAllocator()
 
-	ctx, cancelBrowser := chromedp.NewContext(allocatorCtx)
+	browserCtx, cancelBrowser := chromedp.NewContext(allocatorCtx)
 	defer cancelBrowser()
 
-	ctx, cancelTimeout := context.WithTimeout(ctx, 20*time.Second)
+	// chromedp binds the Chrome process to the context of the first Run and
+	// SIGKILLs only the main process when that context ends. Close the browser
+	// before the render deadline is cancelled so Chrome can stop its helpers.
+	ctx, cancelTimeout := context.WithTimeout(browserCtx, renderTimeout)
 	defer cancelTimeout()
+	defer closeBrowser(browserCtx)
 
 	fileURL := localFileURL(pagePath)
 	var pngBytes []byte
@@ -141,6 +149,23 @@ func screenshotHTML(html string) ([]byte, error) {
 		return nil, fmt.Errorf("dashboard png invalid: %w", err)
 	}
 	return pngBytes, nil
+}
+
+// closeBrowser asks Chrome to exit gracefully, then kills whatever is left in
+// its process group. Without this, helper processes orphaned by a hard kill
+// accumulate on macOS with every render.
+func closeBrowser(browserCtx context.Context) {
+	c := chromedp.FromContext(browserCtx)
+	if c == nil || c.Browser == nil {
+		return
+	}
+	process := c.Browser.Process()
+	closeCtx, cancel := context.WithTimeout(browserCtx, browserCloseTimeout)
+	defer cancel()
+	_ = chromedp.Cancel(closeCtx)
+	if process != nil {
+		killBrowserProcessGroup(process)
+	}
 }
 
 func localFileURL(filePath string) string {
