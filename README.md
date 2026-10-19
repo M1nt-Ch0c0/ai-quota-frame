@@ -54,6 +54,8 @@ set +a
 - `CLIPROXY_MANAGEMENT_KEY`
 - `CPAMP_ADMIN_KEY`
 
+管理 API 也可以放在接受 JWT bearer 的 oauth2-proxy 之后，由网关注入管理密钥。此时设置 `GOOGLE_SERVICE_ACCOUNT_FILE` 与 `GOOGLE_ID_TOKEN_AUDIENCE`（oauth2-proxy 的 client_id），两个 `BASE_URL` 指向网关 HTTPS 地址，主机不再保存管理密钥。程序用服务账号私钥签名断言，向 `oauth2.googleapis.com` 换取一小时有效的 ID Token 并提前 5 分钟刷新；私钥文件只在本机读取，权限应为 0600 并放在仓库之外。网关应仅为该服务账号放行额度采集所需的四个管理路由。
+
 设备未配置推图码时返回 `503`，缺失或错误码返回 `401`，请求体超过 5 MiB 返回 `413`；这些失败请求不得改变屏幕。主机不会在日志中输出推图码，也不会把 OAuth token、management key 或用量采集密钥发送到相框。
 
 不要提交 `.env`、设备密钥、Flash/SD 备份或含密钥的命令输出。相框只应位于受信局域网，禁止把设备的 HTTP 端口映射到公网。

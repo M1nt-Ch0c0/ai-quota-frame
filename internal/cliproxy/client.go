@@ -26,7 +26,7 @@ const maxResponseBytes = 4 << 20
 // values.
 type Client struct {
 	baseURL       string
-	managementKey string
+	bearer        BearerSource
 	httpClient    *http.Client
 	maxConcurrent int
 	passiveMaxAge time.Duration
@@ -47,7 +47,20 @@ type apiCallResponse struct {
 	Body       string              `json:"body"`
 }
 
+// BearerSource returns the credential sent as the management Bearer token.
+type BearerSource func(context.Context) (string, error)
+
 func NewClient(baseURL, managementKey string, timeout time.Duration) (*Client, error) {
+	key := strings.TrimSpace(managementKey)
+	if key == "" {
+		return nil, errors.New("CLIProxyAPI management key is empty")
+	}
+	return NewClientWithBearer(baseURL, func(context.Context) (string, error) { return key, nil }, timeout)
+}
+
+// NewClientWithBearer authenticates with a credential obtained per request,
+// such as a short-lived ID token accepted by a gateway in front of the API.
+func NewClientWithBearer(baseURL string, bearer BearerSource, timeout time.Duration) (*Client, error) {
 	trimmedURL := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := url.Parse(trimmedURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -65,12 +78,12 @@ func NewClient(baseURL, managementKey string, timeout time.Duration) (*Client, e
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("CLIProxyAPI base URL must not contain a query or fragment")
 	}
-	if strings.TrimSpace(managementKey) == "" {
-		return nil, errors.New("CLIProxyAPI management key is empty")
+	if bearer == nil {
+		return nil, errors.New("CLIProxyAPI management credential is missing")
 	}
 	return &Client{
 		baseURL:       trimmedURL,
-		managementKey: strings.TrimSpace(managementKey),
+		bearer:        bearer,
 		httpClient:    newHTTPClient(timeout),
 		maxConcurrent: 4,
 		passiveMaxAge: 24 * time.Hour,
@@ -348,8 +361,12 @@ func (client *Client) managementJSON(ctx context.Context, method, path string, b
 	if err != nil {
 		return errors.New("build CLIProxyAPI management request")
 	}
+	token, err := client.bearer(ctx)
+	if err != nil {
+		return fmt.Errorf("obtain CLIProxyAPI management credential: %w", err)
+	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+client.managementKey)
+	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("User-Agent", "ai-quota-frame/1")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")

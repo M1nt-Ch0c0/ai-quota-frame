@@ -29,13 +29,23 @@ const (
 
 type Client struct {
 	baseURL    string
-	adminKey   string
+	bearer     func(context.Context) (string, error)
 	httpClient *http.Client
 	location   *time.Location
 	now        func() time.Time
 }
 
 func NewClient(baseURL, adminKey string, timeout time.Duration, location *time.Location) (*Client, error) {
+	key := strings.TrimSpace(adminKey)
+	if key == "" {
+		return nil, errors.New("usage collector admin key is empty")
+	}
+	return NewClientWithBearer(baseURL, func(context.Context) (string, error) { return key, nil }, timeout, location)
+}
+
+// NewClientWithBearer authenticates with a credential obtained per request,
+// such as a short-lived ID token accepted by a gateway in front of the API.
+func NewClientWithBearer(baseURL string, bearer func(context.Context) (string, error), timeout time.Duration, location *time.Location) (*Client, error) {
 	trimmedURL := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := url.Parse(trimmedURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -53,8 +63,8 @@ func NewClient(baseURL, adminKey string, timeout time.Duration, location *time.L
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("usage collector base URL must not contain a query or fragment")
 	}
-	if strings.TrimSpace(adminKey) == "" {
-		return nil, errors.New("usage collector admin key is empty")
+	if bearer == nil {
+		return nil, errors.New("usage collector credential is missing")
 	}
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -63,8 +73,8 @@ func NewClient(baseURL, adminKey string, timeout time.Duration, location *time.L
 		location = time.Local
 	}
 	return &Client{
-		baseURL:  trimmedURL,
-		adminKey: strings.TrimSpace(adminKey),
+		baseURL: trimmedURL,
+		bearer:  bearer,
 		httpClient: &http.Client{
 			Timeout: timeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -134,8 +144,12 @@ func (client *Client) fetchWindow(ctx context.Context, start, end time.Time) (in
 	if err != nil {
 		return 0, 0, errors.New("build usage collector request")
 	}
+	token, err := client.bearer(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("obtain usage collector credential: %w", err)
+	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+client.adminKey)
+	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("User-Agent", "ai-quota-frame/1")
 
 	response, err := client.httpClient.Do(request)

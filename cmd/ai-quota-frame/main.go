@@ -9,13 +9,12 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
-	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/cliproxy"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/config"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/frame"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/push"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/service"
-	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/usage"
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/sources"
 )
 
 func main() {
@@ -35,38 +34,28 @@ func run() int {
 	}
 
 	var fetcher service.Fetcher
+	var clients sources.Clients
 	if configuration.DemoMode {
 		logger.Warn("demo mode is enabled; no CLIProxyAPI data will be queried")
 		fetcher = service.DemoFetcher{}
 	} else {
-		client, clientErr := cliproxy.NewClient(
-			configuration.CLIProxyBaseURL,
-			configuration.ManagementKey,
-			configuration.RequestTimeout,
-		)
-		if clientErr != nil {
-			logger.Error("initialize CLIProxyAPI client", "error", clientErr)
+		clients, err = sources.New(configuration)
+		if err != nil {
+			logger.Error("initialize data source clients", "error", err)
 			return 2
 		}
-		client.SetMaxConcurrency(configuration.MaxConcurrency)
-		client.SetPassiveMaxAge(configuration.PassiveMaxAge)
-		fetcher = client
+		if clients.Identity != "" {
+			logger.Info("authenticating management APIs with a Google ID token", "service_account", clients.Identity)
+		}
+		clients.Quota.SetMaxConcurrency(configuration.MaxConcurrency)
+		clients.Quota.SetPassiveMaxAge(configuration.PassiveMaxAge)
+		fetcher = clients.Quota
 	}
 	quotaService := service.New(fetcher, configuration.RefreshInterval)
 	if configuration.DemoMode {
 		quotaService.SetUsageFetcher(service.DemoUsageFetcher{})
-	} else if configuration.CPAMPBaseURL != "" {
-		usageClient, usageErr := usage.NewClient(
-			configuration.CPAMPBaseURL,
-			configuration.CPAMPAdminKey,
-			configuration.RequestTimeout,
-			configuration.Location,
-		)
-		if usageErr != nil {
-			logger.Error("initialize usage collector client", "error", usageErr)
-			return 2
-		}
-		quotaService.SetUsageFetcher(usageClient)
+	} else if clients.Usage != nil {
+		quotaService.SetUsageFetcher(clients.Usage)
 	} else {
 		logger.Info("usage stats disabled; set CPAMP_BASE_URL and CPAMP_ADMIN_KEY to show today's tokens")
 	}

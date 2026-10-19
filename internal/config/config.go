@@ -19,13 +19,17 @@ type Config struct {
 	PhotoFramePushToken string
 	CPAMPBaseURL        string
 	CPAMPAdminKey       string
-	DisplayProviders    []dashboard.DisplayProvider
-	RefreshInterval     time.Duration
-	PassiveMaxAge       time.Duration
-	RequestTimeout      time.Duration
-	MaxConcurrency      int
-	Location            *time.Location
-	DemoMode            bool
+	// GoogleServiceAccountFile replaces both management keys with a Google ID
+	// token when the APIs sit behind an OAuth gateway that injects them.
+	GoogleServiceAccountFile string
+	GoogleIDTokenAudience    string
+	DisplayProviders         []dashboard.DisplayProvider
+	RefreshInterval          time.Duration
+	PassiveMaxAge            time.Duration
+	RequestTimeout           time.Duration
+	MaxConcurrency           int
+	Location                 *time.Location
+	DemoMode                 bool
 }
 
 func FromEnv() (Config, error) {
@@ -76,6 +80,9 @@ func FromEnv() (Config, error) {
 		DemoMode:            demoMode,
 		CPAMPBaseURL:        strings.TrimRight(envString("CPAMP_BASE_URL", ""), "/"),
 		CPAMPAdminKey:       strings.TrimSpace(os.Getenv("CPAMP_ADMIN_KEY")),
+
+		GoogleServiceAccountFile: strings.TrimSpace(os.Getenv("GOOGLE_SERVICE_ACCOUNT_FILE")),
+		GoogleIDTokenAudience:    strings.TrimSpace(os.Getenv("GOOGLE_ID_TOKEN_AUDIENCE")),
 	}
 
 	if config.RefreshInterval < time.Minute {
@@ -87,7 +94,14 @@ func FromEnv() (Config, error) {
 	if config.PassiveMaxAge < 0 {
 		return Config{}, errors.New("PASSIVE_MAX_AGE must not be negative")
 	}
-	if !config.DemoMode && config.ManagementKey == "" {
+	googleAuth := config.GoogleServiceAccountFile != ""
+	if googleAuth && config.GoogleIDTokenAudience == "" {
+		return Config{}, errors.New("GOOGLE_ID_TOKEN_AUDIENCE is required with GOOGLE_SERVICE_ACCOUNT_FILE")
+	}
+	if !googleAuth && config.GoogleIDTokenAudience != "" {
+		return Config{}, errors.New("GOOGLE_ID_TOKEN_AUDIENCE requires GOOGLE_SERVICE_ACCOUNT_FILE")
+	}
+	if !config.DemoMode && !googleAuth && config.ManagementKey == "" {
 		return Config{}, errors.New("CLIPROXY_MANAGEMENT_KEY is required")
 	}
 	if config.PhotoFramePushURL == "" || config.PhotoFramePushToken == "" {
@@ -113,7 +127,7 @@ func FromEnv() (Config, error) {
 	if config.CPAMPAdminKey != "" && config.CPAMPBaseURL == "" {
 		config.CPAMPBaseURL = "http://127.0.0.1:18317"
 	}
-	if config.CPAMPBaseURL != "" && config.CPAMPAdminKey == "" {
+	if config.CPAMPBaseURL != "" && config.CPAMPAdminKey == "" && !googleAuth {
 		return Config{}, errors.New("CPAMP_ADMIN_KEY is required when CPAMP_BASE_URL is set")
 	}
 	return config, nil
