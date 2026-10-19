@@ -205,6 +205,34 @@ func TestFromEnvParsesDisplayProviders(t *testing.T) {
 	}
 }
 
+func TestFromEnvGoogleServiceAccountReplacesManagementKeys(t *testing.T) {
+	clearConfigEnv(t)
+	setValidPhotoFrameTarget(t)
+	t.Setenv("CLIPROXY_BASE_URL", "https://manager.example.com")
+	t.Setenv("CPAMP_BASE_URL", "https://manager.example.com")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/private/sa.json")
+	t.Setenv("GOOGLE_ID_TOKEN_AUDIENCE", "client-id.apps.googleusercontent.com")
+
+	configuration, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if configuration.GoogleServiceAccountFile != "/private/sa.json" || configuration.CPAMPBaseURL == "" {
+		t.Fatalf("Google auth config = %#v", configuration)
+	}
+}
+
+func TestFromEnvGoogleServiceAccountRequiresAudience(t *testing.T) {
+	clearConfigEnv(t)
+	setValidPhotoFrameTarget(t)
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/private/sa.json")
+
+	_, err := FromEnv()
+	if err == nil || !strings.Contains(err.Error(), "GOOGLE_ID_TOKEN_AUDIENCE is required") {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+}
+
 func setValidPhotoFrameTarget(t *testing.T) {
 	t.Helper()
 	t.Setenv("PHOTOFRAME_PUSH_URL", "http://192.0.2.10/api/push")
@@ -222,6 +250,7 @@ func clearConfigEnv(t *testing.T) {
 		"REFRESH_INTERVAL", "PASSIVE_MAX_AGE", "REQUEST_TIMEOUT", "MAX_CONCURRENCY", "TZ",
 		"DEMO_MODE", "CPAMP_BASE_URL", "CPAMP_ADMIN_KEY", "DISPLAY_PROVIDERS",
 		"PHOTOFRAME_PUSH_URL", "PHOTOFRAME_PUSH_TOKEN",
+		"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_ID_TOKEN_AUDIENCE",
 	} {
 		t.Setenv(name, "")
 	}

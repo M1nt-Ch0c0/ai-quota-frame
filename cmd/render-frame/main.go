@@ -9,11 +9,10 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/cliproxy"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/config"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/service"
-	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/usage"
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/sources"
 )
 
 func run() error {
@@ -23,19 +22,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	client, err := cliproxy.NewClient(c.CLIProxyBaseURL, c.ManagementKey, c.RequestTimeout)
+	clients, err := sources.New(c)
 	if err != nil {
 		return err
 	}
-	client.SetMaxConcurrency(c.MaxConcurrency)
-	client.SetPassiveMaxAge(c.PassiveMaxAge)
-	svc := service.New(client, c.RefreshInterval)
-	if c.CPAMPBaseURL != "" {
-		u, e := usage.NewClient(c.CPAMPBaseURL, c.CPAMPAdminKey, c.RequestTimeout, c.Location)
-		if e != nil {
-			return e
-		}
-		svc.SetUsageFetcher(u)
+	clients.Quota.SetMaxConcurrency(c.MaxConcurrency)
+	clients.Quota.SetPassiveMaxAge(c.PassiveMaxAge)
+	svc := service.New(clients.Quota, c.RefreshInterval)
+	if clients.Usage != nil {
+		svc.SetUsageFetcher(clients.Usage)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
