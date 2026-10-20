@@ -65,6 +65,10 @@ func run() int {
 		return 2
 	}
 	renderer.SetDisplayProviders(configuration.DisplayProviders)
+	if err := renderer.SetTheme(configuration.FrameTheme); err != nil {
+		logger.Error("select frame theme", "error", err)
+		return 2
+	}
 	frameProducer := frame.NewProducer(renderer)
 	photoFramePusher := push.New(
 		configuration.PhotoFramePushURL,
@@ -72,6 +76,7 @@ func run() int {
 		frameProducer,
 		logger,
 	)
+	photoFramePusher.SetLastFramePath(configuration.LastFramePath)
 	quotaService.SetRefreshObserver(photoFramePusher.ObserveRefresh)
 	logger.Info("PhotoPainter active push enabled")
 

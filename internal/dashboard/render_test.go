@@ -64,10 +64,13 @@ func TestRenderHTMLProducesDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderHTML() error = %v", err)
 	}
-	for _, needle := range []string{"ai-quota", "CODEX", "<style>", "bar-segment-fill", "header-status", "usage-history", "4.2M", "[TODAY]", "[7DAY]", "[PEAK]"} {
+	for _, needle := range []string{">Mint<", ">Choco<", "spectrum", "CODEX", "<style>", "bar-segment-fill", "header-status", "usage-history", "4.2M", "[TODAY]", "[7DAY]", "[PEAK]"} {
 		if !strings.Contains(html, needle) {
 			t.Fatalf("renderHTML() missing %q", needle)
 		}
+	}
+	if strings.Contains(html, "ai-quota<") || strings.Contains(html, ">LIVE<") {
+		t.Fatal("renderHTML() still shows the old header title or LIVE badge")
 	}
 	if strings.Contains(html, `href="frame.css"`) {
 		t.Fatal("renderHTML() still references external stylesheet")

@@ -15,6 +15,7 @@ import (
 
 const (
 	codexUsageURL      = "https://chatgpt.com/backend-api/wham/usage"
+	codexResetCardsURL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 	claudeUsageURL     = "https://api.anthropic.com/api/oauth/usage"
 	geminiLoadURL      = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
 	geminiQuotaURL     = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
@@ -199,7 +200,7 @@ func kimiWindow(id, label string, fields map[string]any) *quota.Window {
 	return &window
 }
 
-func (client *Client) fetchCodex(ctx context.Context, authIndex string, entry map[string]any) ([]quota.Window, string, error) {
+func codexHeaders(entry map[string]any) map[string]string {
 	headers := map[string]string{
 		"Authorization": "Bearer $TOKEN$",
 		"Accept":        "application/json",
@@ -208,6 +209,11 @@ func (client *Client) fetchCodex(ctx context.Context, authIndex string, entry ma
 	if account := accountID(entry); account != "" {
 		headers["Chatgpt-Account-Id"] = account
 	}
+	return headers
+}
+
+func (client *Client) fetchCodex(ctx context.Context, authIndex string, entry map[string]any) ([]quota.Window, string, error) {
+	headers := codexHeaders(entry)
 	response, err := client.apiCall(ctx, apiCallRequest{
 		AuthIndex: authIndex,
 		Method:    http.MethodGet,
@@ -257,6 +263,60 @@ func (client *Client) fetchCodex(ctx context.Context, authIndex string, entry ma
 		return nil, plan, errors.New("Codex quota response contained no usable windows")
 	}
 	return windows, plan, nil
+}
+
+// fetchCodexResetCards reads the read-only reset-card list used by the Codex
+// CLI. It never consumes a card. Cards are optional decoration, so any
+// failure returns nil and leaves the quota windows untouched.
+func (client *Client) fetchCodexResetCards(ctx context.Context, authIndex string, entry map[string]any) []quota.ResetCard {
+	request := apiCallRequest{
+		AuthIndex: authIndex,
+		Method:    http.MethodGet,
+		URL:       codexResetCardsURL,
+		Header:    codexHeaders(entry),
+	}
+	response, err := client.apiCall(ctx, request)
+	if err != nil && ctx.Err() == nil {
+		response, err = client.apiCall(ctx, request)
+	}
+	if err != nil {
+		return nil
+	}
+	payload, err := parseJSONBody(response.Body)
+	if err != nil {
+		return nil
+	}
+	return codexResetCards(payload, client.now())
+}
+
+func codexResetCards(payload map[string]any, now time.Time) []quota.ResetCard {
+	credits, ok := payload["credits"].([]any)
+	if !ok {
+		return nil
+	}
+	cards := make([]quota.ResetCard, 0, len(credits))
+	for _, item := range credits {
+		credit := mapValue(item)
+		if credit == nil {
+			continue
+		}
+		if status := strings.ToLower(firstString(credit["status"])); status != "" && status != "available" {
+			continue
+		}
+		expires := timeValue(firstNonNil(credit["expires_at"], credit["expiresAt"]), time.Time{})
+		if expires != nil && !expires.After(now) {
+			continue
+		}
+		cards = append(cards, quota.ResetCard{ExpiresAt: expires})
+	}
+	sort.SliceStable(cards, func(left, right int) bool {
+		a, b := cards[left].ExpiresAt, cards[right].ExpiresAt
+		if a == nil || b == nil {
+			return b == nil && a != nil
+		}
+		return a.Before(*b)
+	})
+	return cards
 }
 
 func codexRateLimitWindows(rateLimit map[string]any, labelPrefix string) []quota.Window {

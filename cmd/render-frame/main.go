@@ -46,6 +46,9 @@ func run() error {
 		return err
 	}
 	renderer.SetDisplayProviders(c.DisplayProviders)
+	if err := renderer.SetTheme(c.FrameTheme); err != nil {
+		return err
+	}
 	png, err := renderer.Render(snapshot)
 	if err != nil {
 		return err

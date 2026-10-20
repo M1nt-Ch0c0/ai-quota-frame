@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -119,5 +120,85 @@ func TestBuildWindowDataUsesRequestedTenAndFortyPercentThresholds(t *testing.T) 
 		if data.PercentClass != test.want {
 			t.Errorf("remaining %.0f class = %q, want %q", test.remaining, data.PercentClass, test.want)
 		}
+	}
+}
+
+func TestBuildFrameDataShowsSoonestThreeResetCards(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	at := func(days int) *time.Time {
+		value := now.AddDate(0, 0, days)
+		return &value
+	}
+	data := buildFrameData(quota.Snapshot{
+		DataUpdatedAt: now,
+		Accounts: []quota.Account{
+			{Provider: "codex", Status: "ok", ResetCards: []quota.ResetCard{{ExpiresAt: at(30)}, {ExpiresAt: nil}}},
+			{Provider: "codex", Status: "ok", ResetCards: []quota.ResetCard{{ExpiresAt: at(2)}, {ExpiresAt: at(9)}}},
+			{Provider: "kimi", Status: "ok"},
+		},
+	}, time.UTC, nil)
+
+	codex := data.Rows[0]
+	want := []string{"10-22", "10-29", "11-19"}
+	if strings.Join(codex.ResetCards, ",") != strings.Join(want, ",") {
+		t.Fatalf("ResetCards = %v, want %v", codex.ResetCards, want)
+	}
+	if codex.MoreCards != 1 || codex.CardCount != 4 {
+		t.Fatalf("MoreCards/CardCount = %d/%d, want 1/4", codex.MoreCards, codex.CardCount)
+	}
+	if codex.CardsPanel {
+		t.Fatal("CardsPanel = true for a row without a free window column")
+	}
+	for _, row := range data.Rows[1:] {
+		if row.ResetCards != nil {
+			t.Fatalf("%s row has reset cards %#v", row.Provider, row.ResetCards)
+		}
+	}
+}
+
+func TestBuildFrameDataHidesLiveBadge(t *testing.T) {
+	if data := buildFrameData(quota.Snapshot{}, time.UTC, nil); data.StatusText != "" {
+		t.Fatalf("StatusText = %q, want no live badge", data.StatusText)
+	}
+	if data := buildFrameData(quota.Snapshot{Stale: true}, time.UTC, nil); data.StatusText != "STALE" {
+		t.Fatalf("StatusText = %q, want STALE", data.StatusText)
+	}
+}
+
+func TestBuildFrameDataMovesResetCardsIntoFreeWindowColumn(t *testing.T) {
+	expires := time.Date(2026, 10, 23, 5, 3, 0, 0, time.UTC)
+	data := buildFrameData(quota.Snapshot{
+		Accounts: []quota.Account{{
+			Provider:   "codex",
+			Status:     "ok",
+			Windows:    []quota.Window{{ID: "7d", Label: "7d", RemainingPercent: quota.Percent(69)}},
+			ResetCards: []quota.ResetCard{{ExpiresAt: &expires}},
+		}},
+	}, time.UTC, nil)
+
+	codex := data.Rows[0]
+	if !codex.CardsPanel || codex.CardCount != 1 || codex.ResetCards[0] != "10-23" {
+		t.Fatalf("codex row = %#v, want a one-card panel in the free window column", codex)
+	}
+}
+
+func TestBuildFrameDataHidesErrorsOfProvidersNotOnFrame(t *testing.T) {
+	snapshot := quota.Snapshot{
+		Accounts: []quota.Account{{Provider: "codex", Status: "ok"}, {Provider: "kimi", Status: "error"}},
+		Errors:   []string{"kimi: Kimi quota response contained no usable windows"},
+	}
+	providers := []DisplayProvider{{IDs: []string{"codex"}, Group: "codex", Label: "CODEX"}}
+	if data := buildFrameData(snapshot, time.UTC, providers); data.FooterClass == "error" {
+		t.Fatalf("Footer = %q, want hidden kimi error", data.Footer)
+	}
+
+	snapshot.Errors = append(snapshot.Errors, "codex: refresh cancelled")
+	if data := buildFrameData(snapshot, time.UTC, providers); data.Footer != "codex: refresh cancelled" {
+		t.Fatalf("Footer = %q, want displayed codex error", data.Footer)
+	}
+
+	snapshot.Errors = []string{"quota refresh failed: timeout"}
+	if data := buildFrameData(snapshot, time.UTC, providers); data.FooterClass != "error" {
+		t.Fatal("global refresh error was hidden")
 	}
 }

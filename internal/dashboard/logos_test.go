@@ -15,6 +15,7 @@ func TestProviderLogoSVGAliases(t *testing.T) {
 		{want: `data-logo="openai"`, ids: []string{"codex", "OpenAI", " chatgpt "}},
 		{want: `data-logo="grok"`, ids: []string{"xai", "x-ai", "GROK"}},
 		{want: `data-logo="kimi"`, ids: []string{"kimi", "moonshot", "moonshot_ai", "MoonshotAI"}},
+		{want: `data-logo="claude"`, ids: []string{"claude", "Anthropic"}},
 	}
 	for _, test := range tests {
 		for _, id := range test.ids {
@@ -28,7 +29,7 @@ func TestProviderLogoSVGAliases(t *testing.T) {
 
 func TestProviderLogoSVGIsSelfContainedBlackAndWhite(t *testing.T) {
 	colorPattern := regexp.MustCompile(`(?i)#[0-9a-f]{6}`)
-	for _, id := range []string{"codex", "xai", "kimi", "unknown"} {
+	for _, id := range []string{"codex", "xai", "kimi", "claude", "unknown"} {
 		svg := string(ProviderLogoSVG(id))
 		lower := strings.ToLower(svg)
 		if !strings.HasPrefix(svg, "<svg") || !strings.HasSuffix(svg, "</svg>") {

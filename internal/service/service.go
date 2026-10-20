@@ -259,6 +259,9 @@ func retainBestKnownAccountWindows(current, previous []quota.Account) []quota.Ac
 	for index := range result {
 		account := &result[index]
 		old, ok := previousByIdentity[retentionKey(*account)]
+		if ok && account.ResetCards == nil {
+			account.ResetCards = cloneResetCards(old.ResetCards)
+		}
 		if !ok || len(old.Windows) == 0 {
 			continue
 		}
@@ -324,6 +327,18 @@ func cloneAccounts(accounts []quota.Account) []quota.Account {
 	for index := range result {
 		result[index].LastFreshAt = cloneTime(accounts[index].LastFreshAt)
 		result[index].Windows = cloneWindows(accounts[index].Windows)
+		result[index].ResetCards = cloneResetCards(accounts[index].ResetCards)
+	}
+	return result
+}
+
+func cloneResetCards(cards []quota.ResetCard) []quota.ResetCard {
+	if cards == nil {
+		return nil
+	}
+	result := make([]quota.ResetCard, len(cards))
+	for index, card := range cards {
+		result[index].ExpiresAt = cloneTime(card.ExpiresAt)
 	}
 	return result
 }
@@ -356,6 +371,13 @@ func semanticFingerprint(snapshot quota.Snapshot) [sha256.Size]byte {
 	for accountIndex := range accounts {
 		accounts[accountIndex].Name = ""
 		accounts[accountIndex].LastFreshAt = nil
+		for cardIndex := range accounts[accountIndex].ResetCards {
+			card := &accounts[accountIndex].ResetCards[cardIndex]
+			if card.ExpiresAt != nil {
+				value := card.ExpiresAt.UTC().Truncate(time.Minute)
+				card.ExpiresAt = &value
+			}
+		}
 		for windowIndex := range accounts[accountIndex].Windows {
 			window := &accounts[accountIndex].Windows[windowIndex]
 			window.UsedPercent = nil

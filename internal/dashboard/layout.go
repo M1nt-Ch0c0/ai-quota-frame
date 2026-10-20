@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,9 +19,11 @@ type displayRow struct {
 	group    string
 	provider string
 	detail   string
+	plan     string
 	status   string
 	stale    bool
 	windows  []displayWindow
+	cards    []quota.ResetCard
 }
 
 func snapshotUsesSource(snapshot quota.Snapshot, source string) bool {
@@ -82,18 +85,22 @@ func aggregateRows(accounts []quota.Account, providers []DisplayProvider) []disp
 		if len(effective) != len(matching) {
 			detail = fmt.Sprintf("%d active / %d total", len(effective), len(matching))
 		}
+		singlePlan := ""
 		if len(plans) == 1 {
 			for plan := range plans {
 				detail += " / " + plan
+				singlePlan = plan
 			}
 		}
 		rows = append(rows, displayRow{
 			group:    provider.Group,
 			provider: provider.Label,
 			detail:   detail,
+			plan:     singlePlan,
 			status:   status,
 			stale:    hasStale,
 			windows:  aggregateWindows(provider.Group, effective),
+			cards:    aggregateResetCards(effective),
 		})
 	}
 	return rows
@@ -153,6 +160,23 @@ func aggregateWindows(provider string, accounts []quota.Account) []displayWindow
 		result = append(result, displayWindow{label: current.label, remaining: current.remaining, reset: current.reset})
 	}
 	return result
+}
+
+// aggregateResetCards merges every account's reset cards, soonest expiry
+// first; cards without an expiry sort last.
+func aggregateResetCards(accounts []quota.Account) []quota.ResetCard {
+	var cards []quota.ResetCard
+	for _, account := range accounts {
+		cards = append(cards, account.ResetCards...)
+	}
+	sort.SliceStable(cards, func(left, right int) bool {
+		a, b := cards[left].ExpiresAt, cards[right].ExpiresAt
+		if a == nil || b == nil {
+			return b == nil && a != nil
+		}
+		return a.Before(*b)
+	})
+	return cards
 }
 
 func statusRank(status string) int {

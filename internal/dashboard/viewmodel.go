@@ -22,12 +22,21 @@ type frameData struct {
 
 type rowData struct {
 	Logo        template.HTML
+	Brand       string
+	Slot        int
 	Provider    string
 	Detail      string
+	Plan        string
 	Status      string
 	StatusClass string
 	Stale       bool
 	Windows     []windowData
+	ResetCards  []string
+	MoreCards   int
+	CardCount   int
+	// CardsPanel moves the cards into the free window column when a row
+	// has a single quota window, e.g. Codex Pro with no 5h limit.
+	CardsPanel bool
 }
 
 type windowData struct {
@@ -51,6 +60,7 @@ type usageData struct {
 }
 
 type usageDayData struct {
+	Peak   bool
 	Label  string
 	Value  string
 	Height int
@@ -69,7 +79,7 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 		location = time.UTC
 	}
 
-	statusText := "LIVE"
+	statusText := ""
 	statusClass := "live"
 	if snapshot.Stale {
 		statusText = "STALE"
@@ -91,14 +101,22 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 		for _, window := range row.windows {
 			windows = append(windows, buildWindowData(window, location))
 		}
+		cards, moreCards := buildResetCards(row.cards, location)
 		rows = append(rows, rowData{
 			Logo:        ProviderLogoSVG(row.group),
+			Brand:       brandClass(row.group),
+			Slot:        len(rows) + 1,
 			Provider:    row.provider,
 			Detail:      row.detail,
+			Plan:        row.plan,
 			Status:      strings.ToUpper(row.status),
 			StatusClass: rowStatusClass(row),
 			Stale:       row.stale,
 			Windows:     windows,
+			ResetCards:  cards,
+			MoreCards:   moreCards,
+			CardCount:   len(row.cards),
+			CardsPanel:  len(cards) > 0 && len(windows) == 1 && len(aggregated) <= 3,
 		})
 	}
 
@@ -112,11 +130,55 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 		Footer:      "Updates on change",
 		FooterClass: "muted",
 	}
-	if len(snapshot.Errors) > 0 {
-		data.Footer = compact(snapshot.Errors[0], 34)
+	if errors := displayedErrors(snapshot, providers); len(errors) > 0 {
+		data.Footer = compact(errors[0], 34)
 		data.FooterClass = "error"
 	}
 	return data
+}
+
+// displayedErrors drops "provider: message" errors for account providers that
+// have no row on the frame. Errors without a provider prefix are kept.
+func displayedErrors(snapshot quota.Snapshot, providers []DisplayProvider) []string {
+	if len(providers) == 0 {
+		providers = DefaultDisplayProviders()
+	}
+	displayed := map[string]bool{}
+	for _, provider := range providers {
+		for _, id := range provider.IDs {
+			displayed[id] = true
+		}
+	}
+	accountProviders := map[string]bool{}
+	for _, account := range snapshot.Accounts {
+		accountProviders[account.Provider] = true
+	}
+	result := make([]string, 0, len(snapshot.Errors))
+	for _, message := range snapshot.Errors {
+		if provider, _, ok := strings.Cut(message, ": "); ok && accountProviders[provider] && !displayed[provider] {
+			continue
+		}
+		result = append(result, message)
+	}
+	return result
+}
+
+// brandClass picks the dithered tint behind a provider logo.
+func brandClass(group string) string {
+	switch group {
+	case "claude":
+		return "claude"
+	case "codex":
+		return "codex"
+	case "xai":
+		return "grok"
+	case "kimi":
+		return "kimi"
+	case "gemini-cli", "antigravity":
+		return "gemini"
+	default:
+		return "other"
+	}
 }
 
 func rowStatusClass(row displayRow) string {
@@ -154,6 +216,29 @@ func buildWindowData(window displayWindow, location *time.Location) windowData {
 		data.ResetText = "Reset " + window.reset.In(location).Format("01-02 15:04")
 	}
 	return data
+}
+
+const maxResetCards = 3
+
+// buildResetCards returns the expiry dates of the soonest-expiring cards and
+// how many more cards are not shown.
+func buildResetCards(cards []quota.ResetCard, location *time.Location) ([]string, int) {
+	if len(cards) == 0 {
+		return nil, 0
+	}
+	shown := cards
+	if len(shown) > maxResetCards {
+		shown = shown[:maxResetCards]
+	}
+	result := make([]string, 0, len(shown))
+	for _, card := range shown {
+		text := "--"
+		if card.ExpiresAt != nil {
+			text = card.ExpiresAt.In(location).Format("01-02")
+		}
+		result = append(result, text)
+	}
+	return result, len(cards) - len(shown)
 }
 
 func buildBarSegments(remaining *float64) []barSegmentData {
@@ -209,6 +294,7 @@ func buildUsageData(usage *quota.Usage) *usageData {
 	chartDays := make([]usageDayData, 0, len(days))
 	for _, day := range days {
 		chartDays = append(chartDays, usageDayData{
+			Peak:   maxTokens > 0 && day.Tokens == maxTokens,
 			Label:  formatUsageDate(day.Date),
 			Value:  formatTokens(day.Tokens),
 			Height: usageBarHeight(day.Tokens, maxTokens),

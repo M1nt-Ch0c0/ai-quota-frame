@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=800, height=480, initial-scale=1">
+  <title>AI Quota Frame</title>
+  <link rel="stylesheet" href="frame.css">
+</head>
+<body class="theme-{{.Theme}}">
+  {{.Art.Defs}}
+  <div class="frame">
+    {{if .Art.Chips}}<div class="ground">{{.Art.Chips}}</div>{{end}}
+
+    <header class="header">
+      <div class="title-group">
+        {{if .Art.Mascot}}<span class="header-mascot">{{.Art.Mascot}}</span>{{end}}
+        {{if .Art.Star}}<span class="star">{{.Art.Star}}</span>{{end}}
+        <h1 class="title" aria-label="MintChoco">{{.Art.Wordmark}}</h1>
+        {{if .Art.Star}}<span class="star">{{.Art.Star}}</span>{{end}}
+      </div>
+      <div class="header-side">
+        <div class="clock">{{.UpdatedText}}{{if .StatusText}} <span class="badge">{{.StatusText}}</span>{{end}}</div>
+        {{if eq .FooterClass "error"}}<div class="header-alert">{{.Footer}}</div>{{end}}
+      </div>
+    </header>
+    {{if .Art.Drips}}<div class="drips">{{.Art.Drips}}</div>{{end}}
+
+    <main class="rows rows-{{.RowCount}}">
+      {{range .Rows}}
+      <section class="row slot-{{.Slot}} brand-{{.Brand}} row-{{.StatusClass}}">
+        <div class="row-id">
+          <span class="player">P{{.Slot}}</span>
+          <div class="logo-tile">{{.Logo}}</div>
+          <div class="row-name">
+            <span class="provider">{{.Provider}}</span>
+            {{if .Plan}}<span class="plan">{{.Plan}}</span>{{end}}
+            {{if ne .StatusClass "ok"}}<span class="status">{{.Status}}{{if .Stale}} / STALE{{end}}</span>{{end}}
+            {{if and .ResetCards (not .CardsPanel)}}
+            <span class="mini-cards">{{range .ResetCards}}<span class="mini-card">{{.}}</span>{{end}}{{if .MoreCards}}+{{.MoreCards}}{{end}}</span>
+            {{end}}
+          </div>
+        </div>
+        <div class="row-body">
+          {{range .Windows}}
+          <div class="window">
+            <div class="window-head">
+              <span class="window-label">{{.Label}}</span>
+              <span class="window-value"><span class="window-percent percent-{{.PercentClass}}">{{.PercentText}}</span> <span class="window-left">left</span></span>
+            </div>
+            <div class="bar percent-{{.PercentClass}}" aria-hidden="true">
+              {{range .Segments}}<span class="cell"><span class="cell-fill" style="width: {{.FillWidth}}%;"></span></span>{{end}}
+            </div>
+            <div class="window-reset">{{.ResetText}}</div>
+          </div>
+          {{else}}
+          <div class="window window-empty">no quota window</div>
+          {{end}}
+          {{if .CardsPanel}}
+          <div class="cards">
+            <div class="cards-title"><span>{{.CardCount}} reset cards</span></div>
+            <div class="cards-list">
+              {{range .ResetCards}}<span class="card">{{$.Art.Cone}}<span class="card-tag">RESET</span><span class="card-date">{{.}}</span></span>{{end}}
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </section>
+      {{end}}
+    </main>
+
+    <section class="usage">
+      {{if .Usage}}
+      <div class="usage-chart">
+        <div class="usage-title"><span>7-day token usage</span></div>
+        <div class="usage-bars">
+          {{range .Usage.Days}}
+          <div class="usage-day{{if .Peak}} peak{{end}}">
+            <span class="usage-value">{{.Value}}</span>
+            <div class="usage-slot"><span class="usage-bar" style="height: {{.Height}}%;"></span></div>
+            <span class="usage-date">{{.Label}}</span>
+          </div>
+          {{end}}
+        </div>
+      </div>
+      <div class="usage-stats">
+        {{with .Usage.Today}}<div class="stat stat-today"><span class="stat-tag">TODAY</span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}
+        {{with .Usage.SevenDay}}<div class="stat stat-week"><span class="stat-tag">7DAY</span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}
+        {{with .Usage.Peak}}<div class="stat stat-peak"><span class="stat-tag">PEAK <em>{{.Note}}</em></span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}
+      </div>
+      {{else}}
+      <div class="usage-empty">NO USAGE DATA</div>
+      {{end}}
+    </section>
+  </div>
+</body>
+</html>

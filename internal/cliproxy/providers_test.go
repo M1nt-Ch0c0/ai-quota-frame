@@ -49,6 +49,41 @@ func TestFetchCodexParsesFixturePercentAndDynamicWindows(t *testing.T) {
 	assertProviderReset(t, secondary.ResetsAt, "2026-09-12T00:00:00Z")
 }
 
+func TestCodexResetCardsKeepsAvailableCardsSoonestFirst(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(`{
+		"available_count": 3,
+		"credits": [
+			{"status": "available", "reset_type": "codex", "granted_at": "2026-10-01T00:00:00Z", "expires_at": "2026-11-30T00:00:00Z"},
+			{"status": "redeemed", "expires_at": "2026-10-25T00:00:00Z"},
+			{"status": "available", "expires_at": "2026-10-19T00:00:00Z"},
+			{"status": "available", "expires_at": "2026-10-28T08:00:00Z"},
+			{"status": "available"}
+		]
+	}`), &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	cards := codexResetCards(payload, now)
+	want := []string{"2026-10-28T08:00:00Z", "2026-11-30T00:00:00Z", ""}
+	if len(cards) != len(want) {
+		t.Fatalf("cards = %#v, want %d cards", cards, len(want))
+	}
+	for index, expected := range want {
+		got := ""
+		if cards[index].ExpiresAt != nil {
+			got = cards[index].ExpiresAt.Format(time.RFC3339)
+		}
+		if got != expected {
+			t.Fatalf("card %d expires %q, want %q", index, got, expected)
+		}
+	}
+	if codexResetCards(map[string]any{}, now) != nil {
+		t.Fatal("missing credits list should mean unknown, not zero cards")
+	}
+}
+
 func TestFetchClaudeParsesFixturePercentAndScopedWindows(t *testing.T) {
 	body := providerFixtureBody(t, "claude_usage.json")
 	client := providerFixtureClient(t, func(request apiCallRequest) apiCallResponse {

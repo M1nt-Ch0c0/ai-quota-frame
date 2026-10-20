@@ -9,6 +9,37 @@
   --green: #00ff00;
   --yellow: #ffff00;
   --red: #ff0000;
+
+  /* Spectra 6 shows only six inks. Intermediate tints are 2x2 pixel
+     checkerboards of pure inks, so palette quantization keeps every pixel
+     while the eye blends them at viewing distance. */
+  --dither-red-orange: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23ff0000'/><rect x='0' y='1' width='1' height='1' fill='%23ffff00'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/></svg>");
+  --dither-orange: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23ffff00'/><rect x='0' y='1' width='1' height='1' fill='%23ffff00'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/></svg>");
+  --dither-amber: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ffff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffff00'/><rect x='0' y='1' width='1' height='1' fill='%23ff0000'/><rect x='1' y='1' width='1' height='1' fill='%23ffff00'/></svg>");
+  --dither-yellow-lime: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ffff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffff00'/><rect x='0' y='1' width='1' height='1' fill='%2300ff00'/><rect x='1' y='1' width='1' height='1' fill='%23ffff00'/></svg>");
+  --dither-lime: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ffff00'/><rect x='1' y='0' width='1' height='1' fill='%2300ff00'/><rect x='0' y='1' width='1' height='1' fill='%2300ff00'/><rect x='1' y='1' width='1' height='1' fill='%23ffff00'/></svg>");
+  --dither-green-lime: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%2300ff00'/><rect x='0' y='1' width='1' height='1' fill='%23ffff00'/><rect x='1' y='1' width='1' height='1' fill='%2300ff00'/></svg>");
+  --dither-teal: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%230000ff'/><rect x='0' y='1' width='1' height='1' fill='%230000ff'/><rect x='1' y='1' width='1' height='1' fill='%2300ff00'/></svg>");
+  --dither-purple: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%230000ff'/><rect x='0' y='1' width='1' height='1' fill='%230000ff'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/></svg>");
+  --dither-sky: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%230000ff'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%230000ff'/></svg>");
+  --dither-pale-sky: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%230000ff'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23ffffff'/></svg>");
+  --dither-mint: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%2300ff00'/></svg>");
+  --dither-pale-mint: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23ffffff'/></svg>");
+  --dither-choco: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23000000'/><rect x='0' y='1' width='1' height='1' fill='%23000000'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/></svg>");
+  --dither-grey: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23000000'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23000000'/></svg>");
+  --dither-light-grey: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23000000'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23ffffff'/></svg>");
+  --dither-cream: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ffff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23ffff00'/></svg>");
+  --dither-pale-purple: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%230000ff'/></svg>");
+}
+
+[class*="dither-"],
+.spectrum span,
+.logo-tile,
+.bar-segment-fill,
+.usage-bar,
+.brand-title {
+  background-size: 2px 2px;
+  image-rendering: pixelated;
 }
 
 * {
@@ -23,7 +54,7 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  font-family: "JetBrains Mono", "SF Mono", "Menlo", "DejaVu Sans Mono", "Noto Sans Mono", monospace;
+  font-family: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "Noto Sans Mono", monospace;
 }
 
 .frame {
@@ -42,28 +73,38 @@ html, body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  height: 42px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--ink);
+  height: 36px;
+  padding-bottom: 4px;
 }
+
+/* a dithered spectrum replaces the plain header rule */
+.spectrum {
+  display: flex;
+  height: 6px;
+  border-top: 2px solid var(--ink);
+}
+
+.spectrum span { flex: 1; }
 
 .header-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
 }
 
-.prompt-dollar {
-  font-size: 23px;
+.brand-title {
+  padding: 1px 9px 2px;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background-image: var(--dither-choco);
+  font-size: 22px;
   font-weight: 700;
-  color: var(--blue);
+  line-height: 26px;
+  letter-spacing: 0.04em;
 }
 
-.header-left h1 {
-  font-size: 23px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
+.title-mint { color: var(--green); }
+.title-choco { color: var(--bg); }
 
 .badge {
   font-size: 15px;
@@ -113,7 +154,7 @@ html, body {
   align-items: center;
   height: 98px;
   padding: 8px 0;
-  border-bottom: 2px solid var(--hairline);
+  border-bottom: 2px dashed var(--hairline);
 }
 
 .rows-4 .row,
@@ -123,13 +164,34 @@ html, body {
   padding: 4px 0;
 }
 
-.provider-logo {
-  display: block;
+.logo-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 40px;
   height: 40px;
   border: 2px solid var(--ink);
-  background: var(--bg);
+  border-radius: 6px;
+  background-color: var(--bg);
   overflow: hidden;
+}
+
+.brand-claude { background-image: var(--dither-orange); }
+.brand-codex { background-image: var(--dither-pale-sky); }
+.brand-grok { background-image: var(--dither-light-grey); }
+.brand-kimi { background-image: var(--dither-sky); }
+.brand-gemini { background-image: var(--dither-pale-purple); }
+
+.provider-logo {
+  display: block;
+  width: 30px;
+  height: 30px;
+}
+
+/* the fallback glyph is its own black tile */
+.provider-logo[data-logo="fallback"] {
+  width: 36px;
+  height: 36px;
 }
 
 .row-meta {
@@ -159,12 +221,79 @@ html, body {
   color: var(--soft);
 }
 
+.reset-cards {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* reset cards are drawn as blue outlined tickets with a perforated stub */
+
+.reset-card {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 3px 1px 0;
+  border: 2px solid var(--blue);
+  border-radius: 4px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.reset-card::before {
+  content: "";
+  align-self: stretch;
+  width: 2px;
+  margin: -1px 3px -1px 0;
+  border-right: 2px dashed var(--blue);
+}
+
+.reset-card-more {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reset-panel-cards {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.reset-panel-cards .reset-card {
+  padding: 3px 9px 3px 0;
+  font-size: 17px;
+  line-height: 20px;
+}
+
+.reset-panel-cards .reset-card::before {
+  width: 8px;
+  margin: -3px 8px -3px 0;
+}
+
+.reset-panel-cards .reset-card-more {
+  font-size: 15px;
+}
+
+.rows-4 .row-has-cards .detail,
+.rows-5 .row-has-cards .detail {
+  display: none;
+}
+
 .status {
   font-size: 13px;
   font-weight: 700;
 }
 
-.status-ok { color: var(--ink); }
+.status-ok { color: var(--green); }
 .status-warn { color: var(--ink); }
 .status-urgent { color: var(--red); }
 
@@ -207,7 +336,7 @@ html, body {
 
 .percent-ok { color: var(--ink); }
 .percent-warn { color: var(--ink); }
-.percent-urgent { color: var(--ink); }
+.percent-urgent { color: var(--red); }
 .percent-muted { color: var(--faint); }
 
 .bar-segments {
@@ -224,6 +353,7 @@ html, body {
   min-width: 0;
   height: 12px;
   border: 2px solid var(--ink);
+  border-radius: 2px;
   background: var(--track);
   overflow: hidden;
 }
@@ -233,10 +363,16 @@ html, body {
   height: 100%;
 }
 
-.fill-ok { background: var(--green); }
-.fill-warn { background: var(--yellow); }
-.fill-urgent { background: var(--red); }
-.fill-muted { background: var(--ink); }
+/* ten cells sweep red -> orange -> yellow -> green */
+.bar-segment:nth-child(1) .bar-segment-fill { background-color: var(--red); }
+.bar-segment:nth-child(2) .bar-segment-fill { background-image: var(--dither-red-orange); }
+.bar-segment:nth-child(3) .bar-segment-fill { background-image: var(--dither-orange); }
+.bar-segment:nth-child(4) .bar-segment-fill { background-image: var(--dither-amber); }
+.bar-segment:nth-child(5) .bar-segment-fill { background-color: var(--yellow); }
+.bar-segment:nth-child(6) .bar-segment-fill { background-image: var(--dither-yellow-lime); }
+.bar-segment:nth-child(7) .bar-segment-fill { background-image: var(--dither-lime); }
+.bar-segment:nth-child(8) .bar-segment-fill { background-image: var(--dither-green-lime); }
+.bar-segment:nth-child(n+9) .bar-segment-fill { background-color: var(--green); }
 
 .window-reset {
   margin-top: 4px;
@@ -255,6 +391,8 @@ html, body {
   height: 118px;
   margin-top: 8px;
   border: 2px solid var(--ink);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .usage-history {
@@ -298,7 +436,17 @@ html, body {
 .usage-bar {
   display: block;
   width: 100%;
-  background: var(--ink);
+  border-top: 3px solid var(--blue);
+  background-image: var(--dither-sky);
+}
+
+.usage-day:last-child .usage-bar {
+  background: var(--blue);
+}
+
+.usage-day.usage-day-peak .usage-bar {
+  border-top-color: var(--red);
+  background-image: var(--dither-orange);
 }
 
 .usage-date {
@@ -332,6 +480,9 @@ html, body {
   gap: 5px;
   padding: 8px 9px;
 }
+
+.usage-metric:nth-child(1) .usage-label { color: var(--blue); }
+.usage-metric:nth-child(3) .usage-label { color: var(--red); }
 
 .usage-metric + .usage-metric {
   border-left: 2px solid var(--ink);

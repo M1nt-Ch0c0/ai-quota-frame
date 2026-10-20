@@ -264,6 +264,9 @@ func (client *Client) fetchAccount(ctx context.Context, entry map[string]any) qu
 
 	account.Windows = windows
 	account.Status = quota.StatusForWindows(windows)
+	if rawProvider == "codex" {
+		account.ResetCards = client.fetchCodexResetCards(ctx, authIndex, entry)
+	}
 	observedAt := client.now().UTC()
 	account.LastFreshAt = &observedAt
 	for index := range account.Windows {

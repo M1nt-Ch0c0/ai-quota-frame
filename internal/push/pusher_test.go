@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -694,5 +696,47 @@ func stopPusher(t *testing.T, cancel context.CancelFunc, done <-chan struct{}) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out stopping pusher")
+	}
+}
+
+func TestPusherSavesAcceptedFrame(t *testing.T) {
+	payload := []byte("accepted frame")
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, _ = io.Copy(io.Discard, request.Body)
+		response.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	producer := frame.NewProducer(rendererFunc(func(quota.Snapshot) ([]byte, error) {
+		return append([]byte(nil), payload...), nil
+	}))
+	pusher := New(server.URL+"/api/push", "dedicated-push-token", producer, nil)
+	lastFrame := filepath.Join(t.TempDir(), "last-frame.png")
+	pusher.SetLastFramePath(lastFrame)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pusher.Run(ctx)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	pusher.Enqueue(quota.Snapshot{DataUpdatedAt: time.Unix(1, 0), Accounts: []quota.Account{}})
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		saved, err := os.ReadFile(lastFrame)
+		if err == nil {
+			if !bytes.Equal(saved, payload) {
+				t.Fatalf("saved frame = %q, want %q", saved, payload)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("last frame was not saved: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

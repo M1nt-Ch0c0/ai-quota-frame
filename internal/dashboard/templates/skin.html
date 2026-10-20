@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=800, height=480, initial-scale=1">
+  <title>AI Quota Frame</title>
+  <link rel="stylesheet" href="frame.css">
+</head>
+<body class="skin theme-{{.Theme}}">
+  {{.Art.Defs}}
+  <div class="frame">
+    <img class="skin-background" src="{{.Background}}" alt="">
+
+    <div class="slot clock" style="{{.ClockStyle}}">
+      {{.UpdatedText}}{{if .StatusText}} <span class="badge">{{.StatusText}}</span>{{end}}
+    </div>
+
+    {{range $index, $row := .Rows}}
+    <section class="slot row slot-{{$row.Slot}} row-{{$row.StatusClass}}" style="{{index $.RowStyles $index}}">
+      <div class="row-id">
+        <div class="logo-tile">{{$row.Logo}}</div>
+        <div class="row-name">
+          <span class="provider">{{$row.Provider}}</span>
+          {{if $row.Plan}}<span class="plan">{{$row.Plan}}</span>{{end}}
+          {{if ne $row.StatusClass "ok"}}<span class="status">{{$row.Status}}{{if $row.Stale}} / STALE{{end}}</span>{{end}}
+          {{if and $row.ResetCards (not $row.CardsPanel)}}
+          <span class="mini-cards">{{range $row.ResetCards}}<span class="mini-card">{{.}}</span>{{end}}{{if $row.MoreCards}}+{{$row.MoreCards}}{{end}}</span>
+          {{end}}
+        </div>
+      </div>
+      <div class="row-body">
+        {{range $row.Windows}}
+        <div class="window">
+          <div class="window-head">
+            <span class="window-label">{{.Label}}</span>
+            <span class="window-value"><span class="window-percent percent-{{.PercentClass}}">{{.PercentText}}</span> <span class="window-left">left</span></span>
+          </div>
+          <div class="bar" aria-hidden="true">
+            {{range .Segments}}<span class="cell"><span class="cell-fill" style="width: {{.FillWidth}}%;"></span></span>{{end}}
+          </div>
+          <div class="window-reset">{{.ResetText}}</div>
+        </div>
+        {{else}}
+        <div class="window window-empty">no quota window</div>
+        {{end}}
+        {{if $row.CardsPanel}}
+        <div class="cards">
+          <div class="cards-title">{{$row.CardCount}} reset cards</div>
+          <div class="cards-list">
+            {{range $row.ResetCards}}<span class="card">{{$.Art.Cone}}<span class="card-date">{{.}}</span></span>{{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
+
+    <section class="slot usage" style="{{.UsageStyle}}">
+      {{if .Usage}}
+      <div class="usage-chart">
+        <div class="usage-title">7-day token usage</div>
+        <div class="usage-bars">
+          {{range .Usage.Days}}
+          <div class="usage-day{{if .Peak}} peak{{end}}">
+            <span class="usage-value">{{.Value}}</span>
+            <div class="usage-slot"><span class="usage-bar" style="height: {{.Height}}%;"></span></div>
+            <span class="usage-date">{{.Label}}</span>
+          </div>
+          {{end}}
+        </div>
+      </div>
+      <div class="usage-stats">
+        {{with .Usage.Today}}<div class="stat"><span class="stat-tag">TODAY</span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}
+        {{with .Usage.SevenDay}}<div class="stat"><span class="stat-tag">7DAY</span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}
+        {{with .Usage.Peak}}<div class="stat"><span class="stat-tag">PEAK <em>{{.Note}}</em></span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}
+      </div>
+      {{else}}
+      <div class="usage-empty">NO USAGE DATA</div>
+      {{end}}
+      {{if eq .FooterClass "error"}}<div class="usage-alert">{{.Footer}}</div>{{end}}
+    </section>
+  </div>
+</body>
+</html>

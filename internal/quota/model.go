@@ -26,8 +26,17 @@ type Account struct {
 	Stale       bool       `json:"stale,omitempty"`
 	LastFreshAt *time.Time `json:"last_fresh_at,omitempty"`
 	Windows     []Window   `json:"windows"`
-	Warning     string     `json:"warning,omitempty"`
-	Error       string     `json:"error,omitempty"`
+	// ResetCards lists unredeemed Codex rate-limit reset cards, soonest
+	// expiry first. Nil means the card list could not be read.
+	ResetCards []ResetCard `json:"reset_cards,omitempty"`
+	Warning    string      `json:"warning,omitempty"`
+	Error      string      `json:"error,omitempty"`
+}
+
+// ResetCard is one available Codex rate-limit reset card. A nil ExpiresAt
+// means the backend reported no expiry.
+type ResetCard struct {
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // UsageDay is one calendar day's token consumption and estimated API cost.

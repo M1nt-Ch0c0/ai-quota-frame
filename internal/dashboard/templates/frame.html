@@ -10,24 +10,30 @@
   <div class="frame">
     <header class="header">
       <div class="header-left">
-        <span class="prompt-dollar">$</span>
-        <h1>ai-quota</h1>
-        <span class="badge badge-{{.StatusClass}}">{{.StatusText}}</span>
+        <h1 class="brand-title"><span class="title-mint">Mint</span><span class="title-choco">Choco</span></h1>
+        {{if .StatusText}}<span class="badge badge-{{.StatusClass}}">{{.StatusText}}</span>{{end}}
       </div>
       <div class="header-status stats-{{.FooterClass}}">{{.Footer}}</div>
       <div class="header-right">{{.UpdatedText}}</div>
     </header>
+    <div class="spectrum" aria-hidden="true"><span style="background-color: var(--red);"></span><span style="background-image: var(--dither-red-orange);"></span><span style="background-image: var(--dither-orange);"></span><span style="background-image: var(--dither-amber);"></span><span style="background-color: var(--yellow);"></span><span style="background-image: var(--dither-yellow-lime);"></span><span style="background-image: var(--dither-lime);"></span><span style="background-image: var(--dither-green-lime);"></span><span style="background-color: var(--green);"></span><span style="background-image: var(--dither-teal);"></span><span style="background-color: var(--blue);"></span><span style="background-image: var(--dither-purple);"></span></div>
 
     <main class="rows rows-{{.RowCount}}">
       {{range .Rows}}
-      <section class="row row-{{.StatusClass}}">
-        {{.Logo}}
+      <section class="row row-{{.StatusClass}}{{if .ResetCards}} row-has-cards{{end}}">
+        <div class="logo-tile brand-{{.Brand}}">{{.Logo}}</div>
         <div class="row-meta">
           <div class="provider-line">
             <span class="provider">{{.Provider}}</span>
             <span class="status status-{{.StatusClass}}">{{.Status}}{{if .Stale}} / STALE{{end}}</span>
           </div>
           <div class="detail">{{.Detail}}</div>
+          {{if and .ResetCards (not .CardsPanel)}}
+          <div class="reset-cards" aria-label="reset cards">
+            {{range .ResetCards}}<span class="reset-card">{{.}}</span>{{end}}
+            {{if .MoreCards}}<span class="reset-card-more">+{{.MoreCards}}</span>{{end}}
+          </div>
+          {{end}}
         </div>
         <div class="row-windows">
           {{if .Windows}}
@@ -45,6 +51,18 @@
               <div class="window-reset">{{.ResetText}}</div>
             </div>
             {{end}}
+            {{if .CardsPanel}}
+            <div class="window reset-panel">
+              <div class="window-head">
+                <span class="window-label">Reset cards</span>
+                <span class="window-percent">{{.CardCount}}</span>
+              </div>
+              <div class="reset-panel-cards" aria-label="reset cards">
+                {{range .ResetCards}}<span class="reset-card">{{.}}</span>{{end}}
+                {{if .MoreCards}}<span class="reset-card-more">+{{.MoreCards}}</span>{{end}}
+              </div>
+            </div>
+            {{end}}
           {{else}}
             <div class="window window-empty">-- no quota window available</div>
           {{end}}
@@ -58,7 +76,7 @@
       <div class="usage-history" aria-label="7 day token history">
         <div class="usage-bars">
           {{range .Usage.Days}}
-          <div class="usage-day" title="{{.Title}}">
+          <div class="usage-day{{if .Peak}} usage-day-peak{{end}}" title="{{.Title}}">
             <span class="usage-bar-value">{{.Value}}</span>
             <div class="usage-bar-slot"><span class="usage-bar" style="height: {{.Height}}%;"></span></div>
             <span class="usage-date">{{.Label}}</span>

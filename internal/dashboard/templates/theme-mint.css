@@ -1,0 +1,168 @@
+/* MintChoco ice cream: chocolate band with drips over a chip-studded mint
+   ground; quota bars are chocolate-dipped mint popsicles. */
+
+body { background: var(--white); color: var(--black); }
+
+.frame {
+  padding: 0 10px 8px;
+  background-image: var(--ink-mint);
+}
+
+.header {
+  height: 62px;
+  margin: 0 -10px;
+  padding: 0 14px 0 12px;
+  background-image: var(--ink-choco);
+}
+
+.title-group { gap: 12px; }
+
+.wm-a { fill: url(#ink-mint); }
+.wm-b { fill: var(--white); }
+.wm-shadow { fill: var(--black); }
+
+.clock {
+  padding: 2px 8px;
+  border: 2px solid var(--black);
+  border-radius: 6px;
+  background: var(--white);
+  font-size: 15px;
+}
+
+.header-alert {
+  padding: 0 6px;
+  background: var(--white);
+  color: var(--red);
+}
+
+.badge { color: var(--blue); }
+
+.drips {
+  height: 26px;
+  margin: 0 -10px;
+}
+
+.drips svg { display: block; }
+
+.rows {
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.row,
+.usage {
+  border: 2px solid var(--black);
+  border-radius: 9px;
+  background: var(--white);
+}
+
+.row {
+  grid-template-columns: 192px minmax(0, 1fr);
+  padding: 0 12px 0 10px;
+}
+
+.row-id {
+  border-right: 2px dashed var(--black);
+}
+
+.provider { font-size: 20px; }
+
+.plan {
+  border: 2px solid var(--black);
+  border-radius: 6px;
+}
+
+.status { color: var(--red); }
+
+.mini-card {
+  border: 2px solid var(--blue);
+  border-radius: 4px;
+  color: var(--blue);
+}
+
+.row-body { padding-left: 14px; }
+
+.window-label { font-size: 17px; }
+.window-percent,
+.window-left { color: var(--blue); }
+.percent-urgent { color: var(--red); }
+
+/* popsicle: chocolate-dipped stick end on the left, wooden stick on the right */
+.bar {
+  height: 16px;
+  margin-right: 16px;
+  border: 2px solid var(--black);
+  border-radius: 8px;
+  background: var(--white);
+}
+
+.bar::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -2px;
+  width: 18px;
+  border: 2px solid var(--black);
+  border-right-width: 0;
+  border-radius: 8px 3px 3px 8px;
+  background-image: var(--ink-choco);
+  z-index: 1;
+}
+
+.bar::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: -16px;
+  width: 14px;
+  height: 8px;
+  border: 2px solid var(--black);
+  border-left-width: 0;
+  border-radius: 0 4px 4px 0;
+  background-image: var(--ink-orange);
+}
+
+.cell { border-radius: 0; }
+.cell-fill { background-image: var(--ink-mint); }
+
+.cards-title { font-size: 13px; }
+
+.card {
+  height: 34px;
+  border: 2px dashed var(--black);
+  border-radius: 7px;
+  background: var(--white);
+}
+
+.card svg { display: block; }
+.card-date { font-size: 13px; }
+
+.usage { margin-top: 6px; }
+
+.usage-chart { border-right: 2px dashed var(--black); }
+
+.usage-value { color: var(--blue); }
+
+/* each day is a mint bar with a chocolate topping */
+.usage-bar {
+  border: 2px solid var(--black);
+  border-radius: 4px 4px 0 0;
+  background-image: var(--ink-mint);
+  box-shadow: inset 0 5px 0 0 var(--black);
+}
+
+.usage-day.peak .usage-bar {
+  border-color: var(--red);
+  box-shadow: inset 0 5px 0 0 var(--red);
+}
+
+.usage-date { border-top: 2px solid var(--black); }
+
+
+.stat-tag {
+  border: 2px solid var(--black);
+  border-radius: 10px;
+  background: var(--yellow);
+}
+

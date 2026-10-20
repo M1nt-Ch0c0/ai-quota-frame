@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -37,6 +38,7 @@ type Pusher struct {
 	client     *http.Client
 	logger     *slog.Logger
 	retryDelay time.Duration
+	lastFrame  string
 
 	runOnce      sync.Once
 	wake         chan struct{}
@@ -88,6 +90,27 @@ func New(endpoint, token string, producer Producer, logger *slog.Logger) *Pusher
 		logger:     logger,
 		retryDelay: defaultRetryDelay,
 		wake:       make(chan struct{}, 1),
+	}
+}
+
+// SetLastFramePath makes the worker save a copy of every frame the panel
+// accepted (HTTP 200) to path, so the physical screen can be inspected
+// locally. An empty path disables the copy.
+func (pusher *Pusher) SetLastFramePath(path string) {
+	pusher.lastFrame = path
+}
+
+func (pusher *Pusher) saveLastFrame(payload []byte) {
+	if pusher.lastFrame == "" {
+		return
+	}
+	temporary := pusher.lastFrame + ".tmp"
+	if err := os.WriteFile(temporary, payload, 0o600); err != nil {
+		pusher.logger.Warn("save last pushed frame", "error", err)
+		return
+	}
+	if err := os.Rename(temporary, pusher.lastFrame); err != nil {
+		pusher.logger.Warn("save last pushed frame", "error", err)
 	}
 }
 
@@ -185,6 +208,7 @@ func (pusher *Pusher) run(ctx context.Context) {
 				// identical replacement does not refresh the panel a second time.
 				pusher.complete(queued.id, image.Digest)
 				pusher.logger.Info("PhotoPainter frame pushed", "bytes", len(image.Payload))
+				pusher.saveLastFrame(image.Payload)
 				continue
 			}
 			if superseded {

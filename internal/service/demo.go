@@ -19,6 +19,16 @@ func (fetcher DemoFetcher) Fetch(context.Context) ([]quota.Account, []string, er
 	observedAt := now().UTC()
 	resetFiveHours := observedAt.Add(2*time.Hour + 14*time.Minute)
 	resetWeek := observedAt.Add(3*24*time.Hour + 7*time.Hour)
+	cardExpiries := []time.Time{
+		observedAt.Add(2*24*time.Hour + 5*time.Hour),
+		observedAt.Add(11 * 24 * time.Hour),
+		observedAt.Add(25 * 24 * time.Hour),
+		observedAt.Add(40 * 24 * time.Hour),
+	}
+	resetCards := make([]quota.ResetCard, len(cardExpiries))
+	for index := range cardExpiries {
+		resetCards[index].ExpiresAt = &cardExpiries[index]
+	}
 	return []quota.Account{
 		{
 			Provider: "codex", Name: "j***@example.com", Plan: "plus", Status: "ok", LastFreshAt: &observedAt,
@@ -26,6 +36,7 @@ func (fetcher DemoFetcher) Fetch(context.Context) ([]quota.Account, []string, er
 				{ID: "5h", Label: "5h", UsedPercent: quota.Percent(38), RemainingPercent: quota.Percent(62), ResetsAt: &resetFiveHours, ObservedAt: &observedAt, Source: activeQuotaSourceDemo},
 				{ID: "7d", Label: "7d", UsedPercent: quota.Percent(57), RemainingPercent: quota.Percent(43), ResetsAt: &resetWeek, ObservedAt: &observedAt, Source: activeQuotaSourceDemo},
 			},
+			ResetCards: resetCards,
 		},
 		{
 			Provider: "xai", Name: "w***@example.com", Status: "unknown", Stale: true,

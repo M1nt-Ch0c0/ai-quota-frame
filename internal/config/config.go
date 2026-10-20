@@ -24,6 +24,8 @@ type Config struct {
 	GoogleServiceAccountFile string
 	GoogleIDTokenAudience    string
 	DisplayProviders         []dashboard.DisplayProvider
+	FrameTheme               string
+	LastFramePath            string
 	RefreshInterval          time.Duration
 	PassiveMaxAge            time.Duration
 	RequestTimeout           time.Duration
@@ -65,6 +67,10 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	theme, err := dashboard.ParseTheme(os.Getenv("FRAME_THEME"))
+	if err != nil {
+		return Config{}, err
+	}
 
 	config := Config{
 		CLIProxyBaseURL:     strings.TrimRight(envString("CLIPROXY_BASE_URL", "http://127.0.0.1:8317"), "/"),
@@ -72,6 +78,8 @@ func FromEnv() (Config, error) {
 		PhotoFramePushURL:   strings.TrimSpace(os.Getenv("PHOTOFRAME_PUSH_URL")),
 		PhotoFramePushToken: os.Getenv("PHOTOFRAME_PUSH_TOKEN"),
 		DisplayProviders:    providers,
+		FrameTheme:          theme,
+		LastFramePath:       strings.TrimSpace(os.Getenv("LAST_FRAME_PATH")),
 		RefreshInterval:     refreshInterval,
 		PassiveMaxAge:       passiveMaxAge,
 		RequestTimeout:      requestTimeout,

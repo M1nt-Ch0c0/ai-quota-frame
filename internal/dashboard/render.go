@@ -32,7 +32,16 @@ type Renderer struct {
 	mu        sync.Mutex
 	location  *time.Location
 	tmpl      *template.Template
+	themed    *template.Template
+	skin      *template.Template
+	theme     string
 	providers []DisplayProvider
+}
+
+type themedFrameData struct {
+	frameData
+	Theme string
+	Art   themeArt
 }
 
 func New(location *time.Location) (*Renderer, error) {
@@ -43,7 +52,27 @@ func New(location *time.Location) (*Renderer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse dashboard template: %w", err)
 	}
-	return &Renderer{location: location, tmpl: tmpl, providers: DefaultDisplayProviders()}, nil
+	themed, err := template.New("themed.html").ParseFS(templateFS, "templates/themed.html")
+	if err != nil {
+		return nil, fmt.Errorf("parse themed dashboard template: %w", err)
+	}
+	skin, err := template.New("skin.html").ParseFS(templateFS, "templates/skin.html")
+	if err != nil {
+		return nil, fmt.Errorf("parse skin dashboard template: %w", err)
+	}
+	return &Renderer{location: location, tmpl: tmpl, themed: themed, skin: skin, theme: "classic", providers: DefaultDisplayProviders()}, nil
+}
+
+// SetTheme selects the frame look; see ParseTheme for the accepted names.
+func (renderer *Renderer) SetTheme(theme string) error {
+	theme, err := ParseTheme(theme)
+	if err != nil {
+		return err
+	}
+	renderer.mu.Lock()
+	renderer.theme = theme
+	renderer.mu.Unlock()
+	return nil
 }
 
 func (renderer *Renderer) SetDisplayProviders(providers []DisplayProvider) {
@@ -78,16 +107,59 @@ func (renderer *Renderer) Render(snapshot quota.Snapshot) ([]byte, error) {
 func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {
 	data := buildFrameData(snapshot, renderer.location, renderer.providers)
 	var buffer bytes.Buffer
-	if err := renderer.tmpl.Execute(&buffer, data); err != nil {
-		return "", fmt.Errorf("execute dashboard template: %w", err)
+	if renderer.theme == "classic" {
+		if err := renderer.tmpl.Execute(&buffer, data); err != nil {
+			return "", fmt.Errorf("execute dashboard template: %w", err)
+		}
+		return inlineStylesheet(buffer.String(), "templates/frame.css")
 	}
-	return inlineStylesheet(buffer.String())
+	theme := renderer.theme
+	if look, isSkin := skinThemes[theme]; isSkin {
+		if len(data.Rows) <= len(skinRowSlots) {
+			return renderer.renderSkin(data, theme, look)
+		}
+		// The skin artwork only has room for three rows.
+		theme = look
+	}
+	themed := themedFrameData{frameData: data, Theme: theme, Art: buildThemeArt(theme)}
+	if err := renderer.themed.Execute(&buffer, themed); err != nil {
+		return "", fmt.Errorf("execute themed dashboard template: %w", err)
+	}
+	return inlineStylesheet(buffer.String(), "templates/themed.css", "templates/theme-"+theme+".css")
 }
 
-func inlineStylesheet(html string) (string, error) {
-	css, err := fs.ReadFile(templateFS, "templates/frame.css")
+func (renderer *Renderer) renderSkin(data frameData, theme, look string) (string, error) {
+	background, err := skinBackground(theme)
 	if err != nil {
-		return "", fmt.Errorf("read dashboard stylesheet: %w", err)
+		return "", err
+	}
+	skin := skinFrameData{
+		frameData:  data,
+		Theme:      theme,
+		Art:        buildThemeArt(look),
+		Background: background,
+		ClockStyle: skinClockSlot.Style(),
+		UsageStyle: skinUsageSlot.Style(),
+	}
+	for _, slot := range skinRowSlots {
+		skin.RowStyles = append(skin.RowStyles, slot.Style())
+	}
+	var buffer bytes.Buffer
+	if err := renderer.skin.Execute(&buffer, skin); err != nil {
+		return "", fmt.Errorf("execute skin dashboard template: %w", err)
+	}
+	return inlineStylesheet(buffer.String(), "templates/skin.css")
+}
+
+func inlineStylesheet(html string, paths ...string) (string, error) {
+	var css []byte
+	for _, path := range paths {
+		part, err := fs.ReadFile(templateFS, path)
+		if err != nil {
+			return "", fmt.Errorf("read dashboard stylesheet: %w", err)
+		}
+		css = append(css, part...)
+		css = append(css, '\n')
 	}
 	linked := `<link rel="stylesheet" href="frame.css">`
 	inlined := fmt.Sprintf("<style>%s</style>", css)
@@ -116,6 +188,9 @@ func screenshotHTML(html string) ([]byte, error) {
 		chromedp.Flag("hide-scrollbars", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
+		// Subpixel (ClearType) text leaves red/blue fringes that survive
+		// palette quantization as colored pixels around every glyph.
+		chromedp.Flag("disable-lcd-text", true),
 		chromedp.ModifyCmdFunc(prepareBrowserCommand),
 	)
 	if chromePath := chromeExecPath(); chromePath != "" {

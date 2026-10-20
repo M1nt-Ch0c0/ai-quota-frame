@@ -1,0 +1,351 @@
+:root {
+  --black: #000000; --white: #ffffff; --yellow: #ffff00;
+  --red: #ff0000; --blue: #0000ff; --green: #00ff00;
+  --ink-mint: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%2300ff00'/></svg>");
+  --ink-pale-mint: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23ffffff'/></svg>");
+  --ink-choco: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23000000'/><rect x='0' y='1' width='1' height='1' fill='%23000000'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/></svg>");
+  --ink-orange: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23ffff00'/><rect x='0' y='1' width='1' height='1' fill='%23ffff00'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/></svg>");
+  --ink-sky: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%230000ff'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%230000ff'/></svg>");
+  --ink-grey: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23000000'/><rect x='1' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ffffff'/><rect x='1' y='1' width='1' height='1' fill='%23000000'/></svg>");
+  --ink-green-black: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%23000000'/><rect x='0' y='1' width='1' height='1' fill='%23000000'/><rect x='1' y='1' width='1' height='1' fill='%2300ff00'/></svg>");
+  --ink-lime: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ffff00'/><rect x='1' y='0' width='1' height='1' fill='%2300ff00'/><rect x='0' y='1' width='1' height='1' fill='%2300ff00'/><rect x='1' y='1' width='1' height='1' fill='%23ffff00'/></svg>");
+  --ink-dots-red-on-yellow: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23ff0000'/><rect x='2' y='0' width='1' height='1' fill='%23ffff00'/><rect x='3' y='0' width='1' height='1' fill='%23ffff00'/><rect x='0' y='1' width='1' height='1' fill='%23ff0000'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/><rect x='2' y='1' width='1' height='1' fill='%23ffff00'/><rect x='3' y='1' width='1' height='1' fill='%23ffff00'/><rect x='0' y='2' width='1' height='1' fill='%23ffff00'/><rect x='1' y='2' width='1' height='1' fill='%23ffff00'/><rect x='2' y='2' width='1' height='1' fill='%23ffff00'/><rect x='3' y='2' width='1' height='1' fill='%23ffff00'/><rect x='0' y='3' width='1' height='1' fill='%23ffff00'/><rect x='1' y='3' width='1' height='1' fill='%23ffff00'/><rect x='2' y='3' width='1' height='1' fill='%23ffff00'/><rect x='3' y='3' width='1' height='1' fill='%23ffff00'/></svg>");
+  --ink-dots-red: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23ff0000'/><rect x='1' y='0' width='1' height='1' fill='%23ff0000'/><rect x='2' y='0' width='1' height='1' fill='%23ffffff'/><rect x='3' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%23ff0000'/><rect x='1' y='1' width='1' height='1' fill='%23ff0000'/><rect x='2' y='1' width='1' height='1' fill='%23ffffff'/><rect x='3' y='1' width='1' height='1' fill='%23ffffff'/><rect x='0' y='2' width='1' height='1' fill='%23ffffff'/><rect x='1' y='2' width='1' height='1' fill='%23ffffff'/><rect x='2' y='2' width='1' height='1' fill='%23ffffff'/><rect x='3' y='2' width='1' height='1' fill='%23ffffff'/><rect x='0' y='3' width='1' height='1' fill='%23ffffff'/><rect x='1' y='3' width='1' height='1' fill='%23ffffff'/><rect x='2' y='3' width='1' height='1' fill='%23ffffff'/><rect x='3' y='3' width='1' height='1' fill='%23ffffff'/></svg>");
+  --ink-dots-blue: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%230000ff'/><rect x='1' y='0' width='1' height='1' fill='%230000ff'/><rect x='2' y='0' width='1' height='1' fill='%23ffffff'/><rect x='3' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%230000ff'/><rect x='1' y='1' width='1' height='1' fill='%230000ff'/><rect x='2' y='1' width='1' height='1' fill='%23ffffff'/><rect x='3' y='1' width='1' height='1' fill='%23ffffff'/><rect x='0' y='2' width='1' height='1' fill='%23ffffff'/><rect x='1' y='2' width='1' height='1' fill='%23ffffff'/><rect x='2' y='2' width='1' height='1' fill='%23ffffff'/><rect x='3' y='2' width='1' height='1' fill='%23ffffff'/><rect x='0' y='3' width='1' height='1' fill='%23ffffff'/><rect x='1' y='3' width='1' height='1' fill='%23ffffff'/><rect x='2' y='3' width='1' height='1' fill='%23ffffff'/><rect x='3' y='3' width='1' height='1' fill='%23ffffff'/></svg>");
+  --ink-dots-green: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%2300ff00'/><rect x='1' y='0' width='1' height='1' fill='%2300ff00'/><rect x='2' y='0' width='1' height='1' fill='%23ffffff'/><rect x='3' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%2300ff00'/><rect x='1' y='1' width='1' height='1' fill='%2300ff00'/><rect x='2' y='1' width='1' height='1' fill='%23ffffff'/><rect x='3' y='1' width='1' height='1' fill='%23ffffff'/><rect x='0' y='2' width='1' height='1' fill='%23ffffff'/><rect x='1' y='2' width='1' height='1' fill='%23ffffff'/><rect x='2' y='2' width='1' height='1' fill='%23ffffff'/><rect x='3' y='2' width='1' height='1' fill='%23ffffff'/><rect x='0' y='3' width='1' height='1' fill='%23ffffff'/><rect x='1' y='3' width='1' height='1' fill='%23ffffff'/><rect x='2' y='3' width='1' height='1' fill='%23ffffff'/><rect x='3' y='3' width='1' height='1' fill='%23ffffff'/></svg>");
+  --ink-dots-blue-on-sky: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%230000ff'/><rect x='1' y='0' width='1' height='1' fill='%230000ff'/><rect x='2' y='0' width='1' height='1' fill='%230000ff'/><rect x='3' y='0' width='1' height='1' fill='%23ffffff'/><rect x='0' y='1' width='1' height='1' fill='%230000ff'/><rect x='1' y='1' width='1' height='1' fill='%230000ff'/><rect x='2' y='1' width='1' height='1' fill='%230000ff'/><rect x='3' y='1' width='1' height='1' fill='%23ffffff'/><rect x='0' y='2' width='1' height='1' fill='%230000ff'/><rect x='1' y='2' width='1' height='1' fill='%230000ff'/><rect x='2' y='2' width='1' height='1' fill='%230000ff'/><rect x='3' y='2' width='1' height='1' fill='%23ffffff'/><rect x='0' y='3' width='1' height='1' fill='%23ffffff'/><rect x='1' y='3' width='1' height='1' fill='%23ffffff'/><rect x='2' y='3' width='1' height='1' fill='%23ffffff'/><rect x='3' y='3' width='1' height='1' fill='%23ffffff'/></svg>");
+}
+
+/* Skin frames: a baked six-ink illustration fills the page and live data is
+   drawn only inside fixed white slots (see skin.go for the coordinates). */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 800px;
+  height: 480px;
+  overflow: hidden;
+  background: var(--white);
+  color: var(--black);
+  font-family: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "Noto Sans Mono", monospace;
+  font-weight: 700;
+}
+
+.ink-defs { position: absolute; }
+
+.frame {
+  position: relative;
+  width: 800px;
+  height: 480px;
+  overflow: hidden;
+}
+
+.skin-background {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 800px;
+  height: 480px;
+  image-rendering: pixelated;
+}
+
+.slot {
+  position: absolute;
+  border: 3px solid var(--black);
+  border-radius: 8px;
+  background: var(--white);
+  overflow: hidden;
+}
+
+.clock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.badge { color: var(--blue); }
+
+/* provider rows */
+
+.row {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  align-items: center;
+  padding: 0 14px 0 10px;
+}
+
+.row-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  min-width: 0;
+  border-right: 2px dashed var(--black);
+}
+
+.logo-tile { display: flex; flex: 0 0 auto; }
+
+.provider-logo {
+  display: block;
+  width: 34px;
+  height: 34px;
+}
+
+.row-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.provider {
+  font-size: 20px;
+  line-height: 21px;
+  letter-spacing: 0.03em;
+}
+
+.plan {
+  padding: 0 6px;
+  border: 2px solid var(--black);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.status {
+  color: var(--red);
+  font-size: 11px;
+}
+
+.mini-cards { display: flex; gap: 3px; font-size: 10px; }
+
+.mini-card {
+  padding: 0 2px;
+  border: 2px solid var(--blue);
+  border-radius: 4px;
+  color: var(--blue);
+}
+
+.row-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  padding-left: 14px;
+}
+
+.window {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.window-empty { grid-column: 1 / -1; font-size: 15px; }
+
+.window-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.window-label { font-size: 17px; line-height: 19px; }
+
+.window-percent { color: var(--blue); font-size: 21px; line-height: 21px; }
+.window-left { color: var(--blue); font-size: 13px; }
+.percent-urgent { color: var(--red); }
+
+/* chocolate-dipped mint popsicle with a waffle stick */
+.bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  height: 16px;
+  margin-right: 16px;
+  border: 2px solid var(--black);
+  border-radius: 8px;
+  background: var(--white);
+  image-rendering: pixelated;
+}
+
+.bar::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -2px;
+  z-index: 1;
+  width: 18px;
+  border: 2px solid var(--black);
+  border-right-width: 0;
+  border-radius: 8px 3px 3px 8px;
+  background-image: var(--ink-choco);
+}
+
+.bar::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: -16px;
+  width: 14px;
+  height: 8px;
+  border: 2px solid var(--black);
+  border-left-width: 0;
+  border-radius: 0 4px 4px 0;
+  background-image: var(--ink-orange);
+}
+
+.cell { display: block; min-width: 0; overflow: hidden; }
+.cell-fill { display: block; height: 100%; background-image: var(--ink-mint); }
+
+.window-reset {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cards { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.cards-title { font-size: 13px; line-height: 14px; }
+
+.cards-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 34px;
+  border: 2px dashed var(--black);
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.card svg { display: block; }
+
+/* usage */
+
+.usage { display: flex; }
+
+.usage-chart {
+  display: flex;
+  flex: 0 0 52%;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 10px 4px;
+  border-right: 2px dashed var(--black);
+}
+
+.usage-title { font-size: 13px; line-height: 16px; text-transform: uppercase; }
+
+.usage-bars { display: flex; flex: 1; gap: 7px; min-height: 0; }
+
+.usage-day { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; }
+
+.usage-value {
+  height: 14px;
+  overflow: hidden;
+  color: var(--blue);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.usage-slot { display: flex; flex: 1; align-items: flex-end; min-height: 0; }
+
+/* each day is a mint bar with a chocolate topping */
+.usage-bar {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border: 2px solid var(--black);
+  border-radius: 4px 4px 0 0;
+  background-image: var(--ink-mint);
+  box-shadow: inset 0 5px 0 0 var(--black);
+  image-rendering: pixelated;
+}
+
+.usage-day.peak .usage-bar {
+  border-color: var(--red);
+  box-shadow: inset 0 5px 0 0 var(--red);
+}
+
+.usage-date {
+  height: 15px;
+  padding-top: 2px;
+  border-top: 2px solid var(--black);
+  font-size: 10px;
+  line-height: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.usage-stats {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 12px;
+}
+
+.stat {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-tag {
+  border: 2px solid var(--black);
+  border-radius: 10px;
+  background: var(--yellow);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stat-tag em { font-size: 9px; font-style: normal; }
+
+.stat-tokens { overflow: hidden; font-size: 19px; white-space: nowrap; }
+.stat-tokens small { font-size: 11px; }
+.stat-cost { font-size: 14px; }
+
+.usage-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.usage-alert {
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  max-width: 300px;
+  overflow: hidden;
+  color: var(--red);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
