@@ -3,6 +3,7 @@
 package ble
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -10,7 +11,9 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -97,9 +100,15 @@ func TestHardwareHTTPDisplay(t *testing.T) {
 			{"oversize", token, make([]byte, 5*1024*1024+1), 413},
 			{"invalid PNG", token, make([]byte, 8), 422},
 		} {
-			code, err := send(bytes.NewReader(check.body), int64(len(check.body)), check.auth, check.want == 413)
+			var code int
+			var err error
+			if check.want == 413 {
+				code, err = hwOversizeHTTP(ctx, url, token)
+			} else {
+				code, err = send(bytes.NewReader(check.body), int64(len(check.body)), check.auth, false)
+			}
 			if err != nil {
-				return err
+				return fmt.Errorf("before physical push, %s probe: %w", check.name, err)
 			}
 			if code != check.want {
 				return fmt.Errorf("%s: expected HTTP %d, received %d", check.name, check.want, code)
@@ -186,6 +195,36 @@ func TestHardwareHTTPDisplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Send the oversized Content-Length without a body. Some embedded servers send
+// 100 Continue before the handler's 413, and a general HTTP client then races a
+// large body write against the connection close. This checks rejection at the
+// headers, before any image data or display operation can be accepted.
+func hwOversizeHTTP(ctx context.Context, target, token string) (int, error) {
+	u, err := url.Parse(target)
+	if err != nil || u.Scheme != "http" {
+		return 0, errors.New("invalid hardware HTTP target")
+	}
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(u.Hostname(), "80"))
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	if err = conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return 0, err
+	}
+	_, err = fmt.Fprintf(conn, "POST /api/push HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: image/png\r\nContent-Length: 5242881\r\nConnection: close\r\n\r\n", u.Host, token)
+	if err != nil {
+		return 0, errors.New("oversize header write failed")
+	}
+	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	return response.StatusCode, nil
 }
 
 type hardwareBodyGate struct {
