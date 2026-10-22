@@ -22,6 +22,8 @@ import (
 
 type hardwareState struct {
 	Loaded       int    `json:"loaded_app"`
+	UptimeMS     uint64 `json:"uptime_ms"`
+	ResetReason  int    `json:"reset_reason"`
 	FreeInternal uint32 `json:"free_internal_ram"`
 	FreePSRAM    uint32 `json:"free_psram"`
 	MinInternal  uint32 `json:"minimum_free_internal_ram"`
@@ -44,7 +46,7 @@ func hwStatus(ctx context.Context, c *Client) (hardwareState, error) {
 	return state, err
 }
 func hwMemory(t *testing.T, label string, state hardwareState) {
-	t.Logf("MEMORY %s internal=%d psram=%d minimum_internal=%d minimum_psram=%d", label, state.FreeInternal, state.FreePSRAM, state.MinInternal, state.MinPSRAM)
+	t.Logf("MEMORY %s internal=%d psram=%d minimum_internal=%d minimum_psram=%d uptime_ms=%d reset_reason=%d", label, state.FreeInternal, state.FreePSRAM, state.MinInternal, state.MinPSRAM, state.UptimeMS, state.ResetReason)
 }
 func hwExpect(err error, code DeviceError) error {
 	var deviceErr DeviceError

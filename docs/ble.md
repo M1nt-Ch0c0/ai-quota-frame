@@ -166,6 +166,10 @@ ambiguous result. Stop the automatic pusher/watchdog before all device checks.
 `http-rejections` runs only that test's 401/413/422 probes and never sends the
 valid image; it is suitable for finishing rejection checks after a completed
 physical refresh without needlessly repainting the panel.
+On Windows, `idle-expiry` runs `TestHardwareIdleExpiry`: it reserves a receive
+buffer without committing a package, observes physical disconnection at the
+60-second idle deadline, and checks fresh authentication, released memory and
+manager admission. It checks uptime to distinguish expiration from a reboot.
 
 No listening port was added. The Windows watchdog must continue checking only
 whether `ai-quota-frame.exe` exists; the retired `:8787/healthz` flow stays removed.
