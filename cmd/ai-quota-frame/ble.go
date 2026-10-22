@@ -140,7 +140,7 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	operationCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	if command == "push" {
-		sender, err := ble.NewImageSender(*id, token, *app)
+		sender, err := ble.NewAppImageSender(*id, token, *app)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2

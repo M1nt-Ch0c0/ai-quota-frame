@@ -82,7 +82,7 @@ func run() int {
 	)
 	photoFramePusher.SetLastFramePath(configuration.LastFramePath)
 	if configuration.PhotoFrameTransport == "ble" {
-		sender, err := ble.NewImageSender(configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken, "photoframe")
+		sender, err := ble.NewAppImageSender(configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken, "photoframe")
 		if err != nil {
 			logger.Error("initialize BLE image transport", "error", err)
 			return 2
