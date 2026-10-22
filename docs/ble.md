@@ -144,6 +144,15 @@ tests requiring Chrome are skipped when Chrome is absent. Windows cross-build
 passes. Authorized Windows radio tests and their exact results are recorded in
 the host's `docs/validation-ble.md`. Native macOS radio validation remains pending.
 
+The Windows test completed a 1 MiB package transfer in 554.5 seconds, verified
+staging through the existing installer, removed the test candidate and preserved
+the original running app. Subsequent authenticated discoveries took 5.2 and
+8.7 seconds. This passed with the device on independent USB power. The same
+device had POWERON resets on computer USB despite cable/port replacement and a
+temporary selective-suspend comparison; the exact cause remains unresolved.
+The Windows power setting was restored and the existing scheduled pusher resumed
+after validation. These observations are not a long-duration endurance claim.
+
 Device checks are separately compiled with `-tags photopainter_hardware`; normal
 `make check` never opens a radio or displays an image. The opt-in tests require
 the token only through the trusted process environment:
