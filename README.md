@@ -4,7 +4,7 @@
 
 四个仓库的职责、架构图、耦合边界与修改影响，见 [PhotoPainter 架构总览](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/ARCHITECTURE.md)。
 
-`ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并主动 `POST` 原始 PNG 到常亮的 ESP32-S3 PhotoPainter。设备不再轮询主机，也不使用相册、WebUI、OTA、Home Assistant 或深睡眠流程。
+`ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并主动 `POST` 原始 PNG 到常亮的 ESP32-S3 PhotoPainter。设备不轮询主机，不使用相册、WebUI、宿主整机 OTA、Home Assistant 或深睡眠流程；应用包支持独立的 HTTP/BLE 更新。
 
 ## 刷写
 
@@ -65,6 +65,8 @@ set +a
 配置 `PHOTOFRAME_DEVICE_ID` 后，启动和推图失败时会通过 BLE 认证设备并更新进程内的推送地址，不修改 `.env`。`ai-quota-frame ble scan` 可查看设备 ID，`ble install` 暂存应用包，`ble activate` 显式试运行。PNG 仍通过 HTTP 推送，需要 IP 可达；应用包安装不依赖 Wi-Fi。命令、平台要求和安全边界见 [BLE 指南](docs/ble.md)。
 
 ## macOS 常驻运行
+
+本次原生构建、网关配置和当前待设备状态见 [macOS 部署记录](docs/macos-deployment.md)。
 
 先配置忽略的 `.env` 并执行 `GOTOOLCHAIN=go1.26.0 make check`，再运行：
 
