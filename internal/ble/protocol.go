@@ -31,6 +31,8 @@ const (
 	OpSwitch
 	OpRollback
 	OpRemove
+	OpAppRead
+	OpAppWrite
 )
 
 const MaxPackageSize = 1024 * 1024
@@ -319,5 +321,64 @@ func (c *Client) Manage(ctx context.Context, op byte, app string) error {
 		return err
 	}
 	_, err = c.command(ctx, op, id)
+	return err
+}
+
+func (c *Client) appTarget(ctx context.Context, app string, characteristic uint32) ([]byte, error) {
+	if _, err := encodeApp(app); err != nil {
+		return nil, err
+	}
+	data, err := c.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var state struct {
+		Generation uint32 `json:"generation"`
+		Revision   uint32 `json:"ble_service_revision"`
+		Count      uint32 `json:"ble_characteristics"`
+		Loaded     int    `json:"loaded_app"`
+		Apps       []struct {
+			ID   string `json:"id"`
+			Bank int    `json:"bank"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, errors.New("invalid application BLE status")
+	}
+	matched := false
+	for _, entry := range state.Apps {
+		if entry.Bank == state.Loaded && entry.ID == app {
+			matched = true
+		}
+	}
+	if !matched || state.Generation == 0 || state.Revision == 0 || characteristic >= state.Count {
+		return nil, errors.New("requested application's BLE service is not active")
+	}
+	target := make([]byte, 12)
+	binary.LittleEndian.PutUint32(target, state.Generation)
+	binary.LittleEndian.PutUint32(target[4:], state.Revision)
+	binary.LittleEndian.PutUint32(target[8:], characteristic)
+	return target, nil
+}
+
+func (c *Client) AppRead(ctx context.Context, app string, characteristic uint32) ([]byte, error) {
+	target, err := c.appTarget(ctx, app, characteristic)
+	if err != nil {
+		return nil, err
+	}
+	return c.command(ctx, OpAppRead, target)
+}
+
+// AppWrite waits for the App Manager to deliver and complete the write event.
+// Read a readable characteristic separately; write-only characteristics work too.
+func (c *Client) AppWrite(ctx context.Context, app string, characteristic uint32, value []byte) error {
+	if len(value) > 128 {
+		return errors.New("application BLE values are limited to 128 bytes")
+	}
+	target, err := c.appTarget(ctx, app, characteristic)
+	if err != nil {
+		return err
+	}
+	_, err = c.command(ctx, OpAppWrite, append(target, value...))
 	return err
 }

@@ -24,6 +24,9 @@ type fakeLink struct {
 	digest               []byte
 	committed, activated bool
 	fail                 byte
+	appStatus            []byte
+	appValue             []byte
+	appGeneration        uint32
 }
 
 func newFake() *fakeLink {
@@ -61,6 +64,9 @@ func (f *fakeLink) Exchange(_ context.Context, p []byte) ([]byte, error) {
 		switch p[0] {
 		case OpStatus:
 			status := []byte(`{"apps":[],"phase":"` + strings.Repeat("x", 900) + `"}`)
+			if f.appStatus != nil {
+				status = f.appStatus
+			}
 			offset := int(binary.LittleEndian.Uint32(payload))
 			end := min(offset+400, len(status))
 			data = make([]byte, 8)
@@ -86,6 +92,15 @@ func (f *fakeLink) Exchange(_ context.Context, p []byte) ([]byte, error) {
 			f.committed = true
 		case OpActivate:
 			f.activated = true
+		case OpAppRead, OpAppWrite:
+			if len(payload) < 12 || binary.LittleEndian.Uint32(payload) != f.appGeneration || binary.LittleEndian.Uint32(payload[4:]) != 9 || binary.LittleEndian.Uint32(payload[8:]) != 0 {
+				return nil, errors.New("stale or wrong application service")
+			}
+			if p[0] == OpAppWrite {
+				f.appValue = bytes.Clone(payload[12:])
+			} else {
+				data = bytes.Clone(f.appValue)
+			}
 		}
 	}
 	out := make([]byte, 7)
@@ -97,6 +112,35 @@ func (f *fakeLink) Exchange(_ context.Context, p []byte) ([]byte, error) {
 		out[len(out)-1] ^= 1
 	}
 	return out, nil
+}
+
+func TestApplicationBLEWriteReadAndGenerationBinding(t *testing.T) {
+	f := newFake()
+	f.appGeneration = 7
+	f.appStatus = []byte(`{"generation":7,"ble_service_revision":9,"ble_characteristics":1,"loaded_app":2,"apps":[{"bank":2,"id":"ble-echo"}]}`)
+	c := connectFake(t, f)
+	ctx := context.Background()
+	if err := c.AppWrite(ctx, "ble-echo", 0, []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.AppRead(ctx, "ble-echo", 0)
+	if err != nil || string(got) != "hello" {
+		t.Fatalf("echo: %q, %v", got, err)
+	}
+	before := len(f.requests)
+	if err := c.AppWrite(ctx, "ble-echo", 0, make([]byte, 129)); err == nil || len(f.requests) != before {
+		t.Fatal("oversize app write sent")
+	}
+	if _, err := c.AppRead(ctx, "photoframe", 0); err == nil {
+		t.Fatal("wrong app accepted")
+	}
+	if _, err := c.AppRead(ctx, "ble-echo", 1); err == nil {
+		t.Fatal("wrong characteristic accepted")
+	}
+	f.appGeneration = 8
+	if err := c.AppWrite(ctx, "ble-echo", 0, []byte("stale")); err == nil || string(f.appValue) != "hello" {
+		t.Fatal("stale generation write applied")
+	}
 }
 func connectFake(t *testing.T, f *fakeLink) *Client {
 	t.Helper()

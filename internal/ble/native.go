@@ -150,45 +150,26 @@ func discover(ctx context.Context, adapter *bluetooth.Adapter, id string) (bluet
 	var address bluetooth.Address
 	var found bool
 	var mu sync.Mutex
-	finished := make(chan struct{})
-	// StopScan is the library's cancellation interface. Keep retrying during
-	// startup so a deadline before the native scan starts is not lost.
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-finished:
-			return
-		}
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-finished:
-				return
-			case <-ticker.C:
-				_ = adapter.StopScan()
+	err := runScan(ctx, func(stop func() bool) error {
+		return adapter.Scan(func(_ *bluetooth.Adapter, result bluetooth.ScanResult) {
+			for _, data := range result.ManufacturerData() {
+				if data.CompanyID != 0xffff {
+					continue
+				}
+				info, err := ParseInfo(data.Data)
+				if err != nil || info.ID != id {
+					continue
+				}
+				mu.Lock()
+				if !found {
+					address = result.Address
+					found = true
+				}
+				mu.Unlock()
+				stop()
 			}
-		}
-	}()
-	err := adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
-		for _, data := range result.ManufacturerData() {
-			if data.CompanyID != 0xffff {
-				continue
-			}
-			info, err := ParseInfo(data.Data)
-			if err != nil || info.ID != id {
-				continue
-			}
-			mu.Lock()
-			if !found {
-				address = result.Address
-				found = true
-			}
-			mu.Unlock()
-			_ = a.StopScan()
-		}
-	})
-	close(finished)
+		})
+	}, adapter.StopScan)
 	if ctx.Err() != nil {
 		return address, ctx.Err()
 	}
@@ -209,39 +190,22 @@ func Scan(ctx context.Context) ([]DeviceInfo, error) {
 	var mu sync.Mutex
 	devices := map[string]DeviceInfo{}
 	err := withRadio(ctx, func(adapter *bluetooth.Adapter) error {
-		finished := make(chan struct{})
-		go func() {
-			select {
-			case <-ctx.Done():
-			case <-finished:
-				return
-			}
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-finished:
-					return
-				case <-ticker.C:
-					_ = adapter.StopScan()
+		return runScan(ctx, func(_ func() bool) error {
+			return adapter.Scan(func(_ *bluetooth.Adapter, result bluetooth.ScanResult) {
+				for _, data := range result.ManufacturerData() {
+					if data.CompanyID != 0xffff {
+						continue
+					}
+					info, err := ParseInfo(data.Data)
+					if err != nil {
+						continue
+					}
+					mu.Lock()
+					devices[info.ID] = info
+					mu.Unlock()
 				}
-			}
-		}()
-		defer close(finished)
-		return adapter.Scan(func(_ *bluetooth.Adapter, result bluetooth.ScanResult) {
-			for _, data := range result.ManufacturerData() {
-				if data.CompanyID != 0xffff {
-					continue
-				}
-				info, err := ParseInfo(data.Data)
-				if err != nil {
-					continue
-				}
-				mu.Lock()
-				devices[info.ID] = info
-				mu.Unlock()
-			}
-		})
+			})
+		}, adapter.StopScan)
 	})
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return nil, err

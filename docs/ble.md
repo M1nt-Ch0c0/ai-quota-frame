@@ -71,7 +71,8 @@ payload hash. Reconnect and resend the whole package after a broken session.
 Queries do not activate anything. Never blindly repeat activation following a
 timeout: reconnect and inspect status first, because the manager can finish an
 already-started operation after the client disconnects. Installation has a
-25-minute outer deadline; other operations retain an 11-minute bound.
+90-minute outer deadline to accommodate large packages at MTU 23; other operations
+retain an 11-minute bound. The host still releases idle transfers after 60 seconds.
 
 The BLE link is not encrypted. The token is never transmitted, and nonces,
 direction-specific HMACs and monotonic sequence numbers protect commands and
@@ -111,3 +112,22 @@ to develop or run these tests.
 
 No listening port was added. The Windows watchdog must continue checking only
 whether `ai-quota-frame.exe` exists; the retired `:8787/healthz` flow stays removed.
+
+## Application-owned BLE characteristics (ABI 2.1)
+
+The host's ABI 2.1 extension lets the current application register a bounded custom
+GATT service. The provided `ble-echo` example echoes a value without displaying
+anything. With it active:
+
+```sh
+ai-quota-frame ble app-write --device-id 001122334455 --app ble-echo --characteristic 0 --text hello
+ai-quota-frame ble app-read --device-id 001122334455 --app ble-echo --characteristic 0
+```
+
+The read prints JSON with text and an exact base64 byte representation. The CLI
+checks that the named app is running, obtains its generation/service revision,
+and sends authenticated op 13/14 through the permanent host channel. Index is
+0–3; the app may expose fewer characteristics and values are at most 128 bytes.
+Write success waits for the app's event completion; no immediate physical refresh
+is implied. A switch invalidates the previous generation and service revision.
+The CLI uses signed reads, rather than trusting untagged GATT notifications.

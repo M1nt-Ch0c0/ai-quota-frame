@@ -18,7 +18,7 @@ import (
 // No quota credentials, Chrome, listeners, or .env reads are needed for BLE CLI.
 func runBLE(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|info|status|install|activate|switch|rollback|remove|inspect [options]")
+		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|info|status|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
 		return 2
 	}
 	command := args[0]
@@ -27,6 +27,8 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	id := flags.String("device-id", os.Getenv("PHOTOFRAME_DEVICE_ID"), "stable device ID (12 hexadecimal digits)")
 	app := flags.String("app", "photoframe", "application ID for activate/switch/rollback/remove")
 	file := flags.String("file", "", "tools/module.py package file")
+	characteristic := flags.Uint("characteristic", 0, "zero-based application BLE characteristic index")
+	text := flags.String("text", "", "UTF-8 value for app-write (at most 128 bytes)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -60,8 +62,12 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	ops := map[string]byte{"activate": ble.OpActivate, "switch": ble.OpSwitch, "rollback": ble.OpRollback, "remove": ble.OpRemove}
-	if command != "scan" && command != "info" && command != "status" && command != "install" && ops[command] == 0 {
+	if command != "scan" && command != "info" && command != "status" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
 		fmt.Fprintln(stderr, "unknown BLE command")
+		return 2
+	}
+	if *characteristic >= 4 || len(*text) > 128 {
+		fmt.Fprintln(stderr, "application BLE index must be 0..3 and text at most 128 bytes")
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -96,12 +102,31 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	}
 	budget := 11 * time.Minute
 	if command == "install" {
-		budget = 25 * time.Minute
+		budget = 90 * time.Minute
 	}
 	operationCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	err := ble.WithClient(operationCtx, *id, token, func(ctx context.Context, c *ble.Client) error {
 		switch command {
+		case "app-write":
+			if err := c.AppWrite(ctx, *app, uint32(*characteristic), []byte(*text)); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(stdout, "application write completed")
+			return err
+		case "app-read":
+			var value []byte
+			var err error
+			value, err = c.AppRead(ctx, *app, uint32(*characteristic))
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(stdout).Encode(struct {
+				App            string `json:"app"`
+				Characteristic uint   `json:"characteristic"`
+				Text           string `json:"text"`
+				Bytes          []byte `json:"bytes_base64"`
+			}{*app, *characteristic, string(value), value})
 		case "info":
 			return json.NewEncoder(stdout).Encode(c.Info())
 		case "status":
