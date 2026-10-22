@@ -32,13 +32,15 @@ type Producer interface {
 // Pusher keeps at most one pending snapshot. Enqueue replaces that pending
 // snapshot, while Run serializes rendering and physical display refreshes.
 type Pusher struct {
-	endpoint   string
-	token      string
-	producer   Producer
-	client     *http.Client
-	logger     *slog.Logger
-	retryDelay time.Duration
-	lastFrame  string
+	endpoint      string
+	token         string
+	producer      Producer
+	client        *http.Client
+	logger        *slog.Logger
+	retryDelay    time.Duration
+	lastFrame     string
+	discover      func(context.Context) (string, error)
+	lastDiscovery time.Time
 
 	runOnce      sync.Once
 	wake         chan struct{}
@@ -98,6 +100,30 @@ func New(endpoint, token string, producer Producer, logger *slog.Logger) *Pusher
 // locally. An empty path disables the copy.
 func (pusher *Pusher) SetLastFramePath(path string) {
 	pusher.lastFrame = path
+}
+
+// SetDiscovery must be called before Run. Only the serialized worker changes
+// its endpoint; rediscovery never rewrites .env or immediately repeats a push.
+func (pusher *Pusher) SetDiscovery(discover func(context.Context) (string, error)) {
+	pusher.discover = discover
+}
+
+func (pusher *Pusher) refreshEndpoint(ctx context.Context) {
+	if pusher.discover == nil || ctx.Err() != nil || time.Since(pusher.lastDiscovery) < defaultRetryDelay {
+		return
+	}
+	pusher.lastDiscovery = time.Now()
+	discoveryContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	endpoint, err := pusher.discover(discoveryContext)
+	if err != nil {
+		pusher.logger.Warn("PhotoPainter BLE discovery unavailable", "error", err)
+		return
+	}
+	if endpoint != "" && endpoint != pusher.endpoint {
+		pusher.endpoint = endpoint
+		pusher.logger.Info("PhotoPainter push address updated from authenticated BLE discovery")
+	}
 }
 
 func (pusher *Pusher) saveLastFrame(payload []byte) {
@@ -163,6 +189,7 @@ func (pusher *Pusher) Run(ctx context.Context) {
 }
 
 func (pusher *Pusher) run(ctx context.Context) {
+	pusher.refreshEndpoint(ctx)
 	var retryTimer *time.Timer
 	defer func() {
 		if retryTimer != nil {
@@ -363,6 +390,12 @@ func (pusher *Pusher) postCurrent(ctx context.Context, id uint64, payload []byte
 }
 
 func (pusher *Pusher) post(ctx context.Context, payload []byte) error {
+	if pusher.endpoint == "" {
+		pusher.refreshEndpoint(ctx)
+		if pusher.endpoint == "" {
+			return errors.New("PhotoPainter address unavailable; waiting for BLE discovery")
+		}
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, pusher.endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return &permanentPushError{err: errors.New("create PhotoPainter push request")}
@@ -373,11 +406,13 @@ func (pusher *Pusher) post(ctx context.Context, payload []byte) error {
 
 	response, err := pusher.client.Do(request)
 	if err != nil {
+		pusher.refreshEndpoint(ctx)
 		return fmt.Errorf("send PhotoPainter push request: %w", err)
 	}
 	defer response.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 	if response.StatusCode != http.StatusOK {
+		pusher.refreshEndpoint(ctx)
 		statusError := fmt.Errorf("PhotoPainter push returned HTTP %d", response.StatusCode)
 		if retryableHTTPStatus(response.StatusCode) {
 			return statusError

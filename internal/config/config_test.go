@@ -38,7 +38,7 @@ func TestFromEnvRequiresPhotoFrameTarget(t *testing.T) {
 	t.Setenv("DEMO_MODE", "true")
 
 	_, err := FromEnv()
-	if err == nil || !strings.Contains(err.Error(), "PHOTOFRAME_PUSH_URL and PHOTOFRAME_PUSH_TOKEN are required") {
+	if err == nil || !strings.Contains(err.Error(), "PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required") {
 		t.Fatalf("FromEnv() error = %v", err)
 	}
 }
@@ -249,7 +249,7 @@ func clearConfigEnv(t *testing.T) {
 		"CLIPROXY_BASE_URL", "CLIPROXY_MANAGEMENT_KEY",
 		"REFRESH_INTERVAL", "PASSIVE_MAX_AGE", "REQUEST_TIMEOUT", "MAX_CONCURRENCY", "TZ",
 		"DEMO_MODE", "CPAMP_BASE_URL", "CPAMP_ADMIN_KEY", "DISPLAY_PROVIDERS",
-		"PHOTOFRAME_PUSH_URL", "PHOTOFRAME_PUSH_TOKEN",
+		"PHOTOFRAME_PUSH_URL", "PHOTOFRAME_PUSH_TOKEN", "PHOTOFRAME_DEVICE_ID",
 		"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_ID_TOKEN_AUDIENCE",
 	} {
 		t.Setenv(name, "")

@@ -60,6 +60,10 @@ set +a
 
 不要提交 `.env`、设备密钥、Flash/SD 备份或含密钥的命令输出。相框只应位于受信局域网，禁止把设备的 HTTP 端口映射到公网。
 
+## BLE 发现与应用安装
+
+配置 `PHOTOFRAME_DEVICE_ID` 后，启动和推图失败时会通过 BLE 认证设备并更新进程内的推送地址，不修改 `.env`。`ai-quota-frame ble scan` 可查看设备 ID，`ble install` 暂存应用包，`ble activate` 显式试运行。PNG 仍通过 HTTP 推送，需要 IP 可达；应用包安装不依赖 Wi-Fi。命令、平台要求和安全边界见 [BLE 指南](docs/ble.md)。
+
 ## macOS 常驻运行
 
 先配置忽略的 `.env` 并执行 `make check`，再运行：

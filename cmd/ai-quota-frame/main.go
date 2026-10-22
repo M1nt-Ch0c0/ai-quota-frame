@@ -9,6 +9,7 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/ble"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/config"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/frame"
@@ -22,6 +23,9 @@ func main() {
 }
 
 func run() int {
+	if len(os.Args) > 1 && os.Args[1] == "ble" {
+		return runBLE(os.Args[2:], os.Stdout, os.Stderr)
+	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	configuration, err := config.FromEnv()
 	if err != nil {
@@ -77,6 +81,11 @@ func run() int {
 		logger,
 	)
 	photoFramePusher.SetLastFramePath(configuration.LastFramePath)
+	if configuration.PhotoFrameDeviceID != "" {
+		photoFramePusher.SetDiscovery(func(ctx context.Context) (string, error) {
+			return ble.DiscoverPushURL(ctx, configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken)
+		})
+	}
 	quotaService.SetRefreshObserver(photoFramePusher.ObserveRefresh)
 	logger.Info("PhotoPainter active push enabled")
 

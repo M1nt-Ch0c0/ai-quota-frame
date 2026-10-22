@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/ble"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
 )
 
@@ -17,6 +18,7 @@ type Config struct {
 	ManagementKey       string
 	PhotoFramePushURL   string
 	PhotoFramePushToken string
+	PhotoFrameDeviceID  string
 	CPAMPBaseURL        string
 	CPAMPAdminKey       string
 	// GoogleServiceAccountFile replaces both management keys with a Google ID
@@ -77,6 +79,7 @@ func FromEnv() (Config, error) {
 		ManagementKey:       strings.TrimSpace(os.Getenv("CLIPROXY_MANAGEMENT_KEY")),
 		PhotoFramePushURL:   strings.TrimSpace(os.Getenv("PHOTOFRAME_PUSH_URL")),
 		PhotoFramePushToken: os.Getenv("PHOTOFRAME_PUSH_TOKEN"),
+		PhotoFrameDeviceID:  strings.TrimSpace(os.Getenv("PHOTOFRAME_DEVICE_ID")),
 		DisplayProviders:    providers,
 		FrameTheme:          theme,
 		LastFramePath:       strings.TrimSpace(os.Getenv("LAST_FRAME_PATH")),
@@ -112,11 +115,19 @@ func FromEnv() (Config, error) {
 	if !config.DemoMode && !googleAuth && config.ManagementKey == "" {
 		return Config{}, errors.New("CLIPROXY_MANAGEMENT_KEY is required")
 	}
-	if config.PhotoFramePushURL == "" || config.PhotoFramePushToken == "" {
-		return Config{}, errors.New("PHOTOFRAME_PUSH_URL and PHOTOFRAME_PUSH_TOKEN are required")
+	if config.PhotoFrameDeviceID != "" {
+		config.PhotoFrameDeviceID, err = ble.NormalizeID(config.PhotoFrameDeviceID)
+		if err != nil {
+			return Config{}, errors.New("PHOTOFRAME_DEVICE_ID must be a 12-digit hexadecimal device ID")
+		}
 	}
-	if err := validatePhotoFramePushURL(config.PhotoFramePushURL); err != nil {
-		return Config{}, err
+	if (config.PhotoFramePushURL == "" && config.PhotoFrameDeviceID == "") || config.PhotoFramePushToken == "" {
+		return Config{}, errors.New("PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required")
+	}
+	if config.PhotoFramePushURL != "" {
+		if err := validatePhotoFramePushURL(config.PhotoFramePushURL); err != nil {
+			return Config{}, err
+		}
 	}
 	if err := validatePhotoFramePushToken(config.PhotoFramePushToken); err != nil {
 		return Config{}, err
