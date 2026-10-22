@@ -1,6 +1,6 @@
 // Package ble implements the PhotoPainter BLE v1 transport. The wire format is
-// shared with photopainter-host/docs/ble-protocol.md. It installs application
-// packages only; the host firmware and partition table are never written.
+// shared with photopainter-host/docs/ble-protocol.md. It transports PNG images
+// and application packages; host firmware and partition tables are never written.
 package ble
 
 import (
@@ -33,6 +33,9 @@ const (
 	OpRemove
 	OpAppRead
 	OpAppWrite
+	OpImageCaps
+	OpImageBegin
+	OpImageResult
 )
 
 const MaxPackageSize = 1024 * 1024
@@ -148,7 +151,7 @@ func authenticate(ctx context.Context, link Link, id, token string, random io.Re
 type DeviceError uint16
 
 func (e DeviceError) Error() string {
-	names := [...]string{"ok", "unauthorized", "token unconfigured", "busy", "invalid request", "unexpected offset", "SHA-256 mismatch", "out of memory", "invalid application state", "invalid package", "storage or application failure", "session expired"}
+	names := [...]string{"ok", "unauthorized", "token unconfigured", "busy", "invalid request", "unexpected offset", "SHA-256 mismatch", "out of memory", "invalid application state", "invalid package", "storage or application failure", "session expired", "invalid PNG image", "physical display failed", "device boot changed"}
 	if int(e) < len(names) {
 		return "PhotoPainter BLE: " + names[e]
 	}
@@ -305,12 +308,23 @@ func (c *Client) Install(ctx context.Context, p []byte, progress func(int, int))
 	if len(ack) != 4 || binary.LittleEndian.Uint32(ack) > uint32(len(p)) {
 		return errors.New("invalid BLE upload offset")
 	}
-	for offset := int(binary.LittleEndian.Uint32(ack)); offset < len(p); {
+	if err = c.uploadChunks(ctx, p, int(binary.LittleEndian.Uint32(ack)), progress); err != nil {
+		return err
+	}
+	_, err = c.command(ctx, OpCommit, nil)
+	return err
+}
+
+func (c *Client) uploadChunks(ctx context.Context, p []byte, offset int, progress func(int, int)) error {
+	if offset < 0 || offset > len(p) {
+		return errors.New("invalid BLE upload offset")
+	}
+	for offset < len(p) {
 		end := min(offset+400, len(p))
 		chunk := make([]byte, 4, 4+end-offset)
 		binary.LittleEndian.PutUint32(chunk, uint32(offset))
 		chunk = append(chunk, p[offset:end]...)
-		ack, err = c.command(ctx, OpChunk, chunk)
+		ack, err := c.command(ctx, OpChunk, chunk)
 		if err != nil {
 			return err
 		}
@@ -322,8 +336,7 @@ func (c *Client) Install(ctx context.Context, p []byte, progress func(int, int))
 			progress(offset, len(p))
 		}
 	}
-	_, err = c.command(ctx, OpCommit, nil)
-	return err
+	return nil
 }
 
 func (c *Client) Manage(ctx context.Context, op byte, app string) error {

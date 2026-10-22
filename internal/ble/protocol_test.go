@@ -27,6 +27,7 @@ type fakeLink struct {
 	appStatus            []byte
 	appValue             []byte
 	appGeneration        uint32
+	handle               func(byte, []byte) ([]byte, DeviceError, bool, error)
 }
 
 func newFake() *fakeLink {
@@ -44,6 +45,7 @@ func (f *fakeLink) Exchange(_ context.Context, p []byte) ([]byte, error) {
 		return nil, errors.New("simulated link loss")
 	}
 	var data []byte
+	var code DeviceError
 	if p[0] == OpAuth {
 		transcript := append(append(bytes.Clone(f.info[2:8]), f.nonce...), p[1:33]...)
 		if !hmac.Equal(tag([]byte(testToken), "pp-ble-v1/client", transcript), p[33:]) {
@@ -61,51 +63,62 @@ func (f *fakeLink) Exchange(_ context.Context, p []byte) ([]byte, error) {
 		}
 		f.sequence = seq
 		payload := p[5 : len(p)-32]
-		switch p[0] {
-		case OpStatus:
-			status := []byte(`{"apps":[],"phase":"` + strings.Repeat("x", 900) + `"}`)
-			if f.appStatus != nil {
-				status = f.appStatus
+		handled := false
+		if f.handle != nil {
+			var err error
+			data, code, handled, err = f.handle(p[0], payload)
+			if err != nil {
+				return nil, err
 			}
-			offset := int(binary.LittleEndian.Uint32(payload))
-			end := min(offset+400, len(status))
-			data = make([]byte, 8)
-			binary.LittleEndian.PutUint32(data, uint32(len(status)))
-			binary.LittleEndian.PutUint32(data[4:], uint32(offset))
-			data = append(data, status[offset:end]...)
-		case OpBegin:
-			f.total = binary.LittleEndian.Uint32(payload)
-			f.digest = bytes.Clone(payload[4:36])
-			data = make([]byte, 4)
-		case OpChunk:
-			if binary.LittleEndian.Uint32(payload) != uint32(len(f.packageData)) {
-				return nil, errors.New("wrong chunk offset")
-			}
-			f.packageData = append(f.packageData, payload[4:]...)
-			data = make([]byte, 4)
-			binary.LittleEndian.PutUint32(data, uint32(len(f.packageData)))
-		case OpCommit:
-			digest := sha256.Sum256(f.packageData)
-			if uint32(len(f.packageData)) != f.total || !hmac.Equal(digest[:], f.digest) {
-				return nil, errors.New("bad upload")
-			}
-			f.committed = true
-		case OpActivate:
-			f.activated = true
-		case OpAppRead, OpAppWrite:
-			if len(payload) < 12 || binary.LittleEndian.Uint32(payload) != f.appGeneration || binary.LittleEndian.Uint32(payload[4:]) != 9 || binary.LittleEndian.Uint32(payload[8:]) != 0 {
-				return nil, errors.New("stale or wrong application service")
-			}
-			if p[0] == OpAppWrite {
-				f.appValue = bytes.Clone(payload[12:])
-			} else {
-				data = bytes.Clone(f.appValue)
+		}
+		if !handled {
+			switch p[0] {
+			case OpStatus:
+				status := []byte(`{"apps":[],"phase":"` + strings.Repeat("x", 900) + `"}`)
+				if f.appStatus != nil {
+					status = f.appStatus
+				}
+				offset := int(binary.LittleEndian.Uint32(payload))
+				end := min(offset+400, len(status))
+				data = make([]byte, 8)
+				binary.LittleEndian.PutUint32(data, uint32(len(status)))
+				binary.LittleEndian.PutUint32(data[4:], uint32(offset))
+				data = append(data, status[offset:end]...)
+			case OpBegin:
+				f.total = binary.LittleEndian.Uint32(payload)
+				f.digest = bytes.Clone(payload[4:36])
+				data = make([]byte, 4)
+			case OpChunk:
+				if binary.LittleEndian.Uint32(payload) != uint32(len(f.packageData)) {
+					return nil, errors.New("wrong chunk offset")
+				}
+				f.packageData = append(f.packageData, payload[4:]...)
+				data = make([]byte, 4)
+				binary.LittleEndian.PutUint32(data, uint32(len(f.packageData)))
+			case OpCommit:
+				digest := sha256.Sum256(f.packageData)
+				if uint32(len(f.packageData)) != f.total || !hmac.Equal(digest[:], f.digest) {
+					return nil, errors.New("bad upload")
+				}
+				f.committed = true
+			case OpActivate:
+				f.activated = true
+			case OpAppRead, OpAppWrite:
+				if len(payload) < 12 || binary.LittleEndian.Uint32(payload) != f.appGeneration || binary.LittleEndian.Uint32(payload[4:]) != 9 || binary.LittleEndian.Uint32(payload[8:]) != 0 {
+					return nil, errors.New("stale or wrong application service")
+				}
+				if p[0] == OpAppWrite {
+					f.appValue = bytes.Clone(payload[12:])
+				} else {
+					data = bytes.Clone(f.appValue)
+				}
 			}
 		}
 	}
 	out := make([]byte, 7)
 	out[0] = p[0]
 	binary.LittleEndian.PutUint32(out[1:], f.sequence)
+	binary.LittleEndian.PutUint16(out[5:], uint16(code))
 	out = append(out, data...)
 	out = append(out, tag(f.key, "pp-ble-v1/response", out)...)
 	if f.alter {

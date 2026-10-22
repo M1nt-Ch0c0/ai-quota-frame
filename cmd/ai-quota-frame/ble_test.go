@@ -29,3 +29,14 @@ func TestBLEInspectRejectsInvalidPackageOffline(t *testing.T) {
 		t.Fatalf("inspect: %d %s", code, errout.String())
 	}
 }
+
+func TestBLEPushRejectsInvalidPNGBeforeOpeningRadio(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.png")
+	if err := os.WriteFile(path, []byte("not a PNG"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errout bytes.Buffer
+	if code := runBLE([]string{"push", "--file", path}, &out, &errout); code != 2 || !strings.Contains(errout.String(), "PNG") {
+		t.Fatalf("push: %d %s", code, errout.String())
+	}
+}

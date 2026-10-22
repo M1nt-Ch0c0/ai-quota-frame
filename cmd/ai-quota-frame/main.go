@@ -81,13 +81,22 @@ func run() int {
 		logger,
 	)
 	photoFramePusher.SetLastFramePath(configuration.LastFramePath)
-	if configuration.PhotoFrameDeviceID != "" {
+	if configuration.PhotoFrameTransport == "ble" {
+		sender, err := ble.NewImageSender(configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken, "photoframe")
+		if err != nil {
+			logger.Error("initialize BLE image transport", "error", err)
+			return 2
+		}
+		photoFramePusher.SetSender(func(ctx context.Context, payload []byte) error {
+			return sender.Send(ctx, payload, nil)
+		})
+	} else if configuration.PhotoFrameDeviceID != "" {
 		photoFramePusher.SetDiscovery(func(ctx context.Context) (string, error) {
 			return ble.DiscoverPushURL(ctx, configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken)
 		})
 	}
 	quotaService.SetRefreshObserver(photoFramePusher.ObserveRefresh)
-	logger.Info("PhotoPainter active push enabled")
+	logger.Info("PhotoPainter active push enabled", "transport", configuration.PhotoFrameTransport)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

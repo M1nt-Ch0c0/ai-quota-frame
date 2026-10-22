@@ -40,6 +40,7 @@ type Pusher struct {
 	retryDelay    time.Duration
 	lastFrame     string
 	discover      func(context.Context) (string, error)
+	send          func(context.Context, []byte) error
 	lastDiscovery time.Time
 
 	runOnce      sync.Once
@@ -96,7 +97,7 @@ func New(endpoint, token string, producer Producer, logger *slog.Logger) *Pusher
 }
 
 // SetLastFramePath makes the worker save a copy of every frame the panel
-// accepted (HTTP 200) to path, so the physical screen can be inspected
+// completed (HTTP 200 or authenticated BLE completion) to path, so the screen can be inspected
 // locally. An empty path disables the copy.
 func (pusher *Pusher) SetLastFramePath(path string) {
 	pusher.lastFrame = path
@@ -106,6 +107,13 @@ func (pusher *Pusher) SetLastFramePath(path string) {
 // its endpoint; rediscovery never rewrites .env or immediately repeats a push.
 func (pusher *Pusher) SetDiscovery(discover func(context.Context) (string, error)) {
 	pusher.discover = discover
+}
+
+// SetSender selects a complete non-HTTP image transport before Run. Its success
+// must mean physical completion. There is no fallback to HTTP or IP discovery.
+// Errors implementing Permanent() bool can reject the current PNG digest.
+func (pusher *Pusher) SetSender(send func(context.Context, []byte) error) {
+	pusher.send = send
 }
 
 func (pusher *Pusher) refreshEndpoint(ctx context.Context) {
@@ -189,7 +197,9 @@ func (pusher *Pusher) Run(ctx context.Context) {
 }
 
 func (pusher *Pusher) run(ctx context.Context) {
-	pusher.refreshEndpoint(ctx)
+	if pusher.send == nil {
+		pusher.refreshEndpoint(ctx)
+	}
 	var retryTimer *time.Timer
 	defer func() {
 		if retryTimer != nil {
@@ -230,7 +240,7 @@ func (pusher *Pusher) run(ctx context.Context) {
 				return
 			}
 			if pushed {
-				// HTTP 200 means the panel refresh completed. Record that physical
+				// Transport success means the panel refresh completed. Record that physical
 				// state even when a newer snapshot arrived during the request, so an
 				// identical replacement does not refresh the panel a second time.
 				pusher.complete(queued.id, image.Digest)
@@ -390,6 +400,14 @@ func (pusher *Pusher) postCurrent(ctx context.Context, id uint64, payload []byte
 }
 
 func (pusher *Pusher) post(ctx context.Context, payload []byte) error {
+	if pusher.send != nil {
+		err := pusher.send(ctx, payload)
+		var classified interface{ Permanent() bool }
+		if errors.As(err, &classified) && classified.Permanent() {
+			return &permanentPushError{err: err}
+		}
+		return err
+	}
 	if pusher.endpoint == "" {
 		pusher.refreshEndpoint(ctx)
 		if pusher.endpoint == "" {

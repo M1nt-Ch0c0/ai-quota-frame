@@ -18,7 +18,7 @@ import (
 // No quota credentials, Chrome, listeners, or .env reads are needed for BLE CLI.
 func runBLE(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|bind|unbind|info|status|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
+		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|bind|unbind|info|status|push|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
 		return 2
 	}
 	command := args[0]
@@ -26,7 +26,7 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	id := flags.String("device-id", os.Getenv("PHOTOFRAME_DEVICE_ID"), "stable device ID (12 hexadecimal digits)")
 	app := flags.String("app", "photoframe", "application ID for activate/switch/rollback/remove")
-	file := flags.String("file", "", "tools/module.py package file")
+	file := flags.String("file", "", "PNG for push, or tools/module.py package for installation")
 	characteristic := flags.Uint("characteristic", 0, "zero-based application BLE characteristic index")
 	text := flags.String("text", "", "UTF-8 value for app-write (at most 128 bytes)")
 	if err := flags.Parse(args[1:]); err != nil {
@@ -53,6 +53,23 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		*id = bound
 	}
 	var pkg []byte
+	if command == "push" {
+		f, err := os.Open(*file)
+		if err != nil {
+			fmt.Fprintln(stderr, "cannot open PNG file")
+			return 2
+		}
+		pkg, err = io.ReadAll(io.LimitReader(f, ble.MaxImageSize+1))
+		f.Close()
+		if err != nil {
+			fmt.Fprintln(stderr, "cannot read PNG file")
+			return 2
+		}
+		if err = ble.ValidatePNG(pkg); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+	}
 	if command == "install" || command == "inspect" {
 		f, err := os.Open(*file)
 		if err != nil {
@@ -78,7 +95,7 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	ops := map[string]byte{"activate": ble.OpActivate, "switch": ble.OpSwitch, "rollback": ble.OpRollback, "remove": ble.OpRemove}
-	if command != "scan" && command != "bind" && command != "info" && command != "status" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
+	if command != "scan" && command != "bind" && command != "info" && command != "status" && command != "push" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
 		fmt.Fprintln(stderr, "unknown BLE command")
 		return 2
 	}
@@ -117,11 +134,32 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	budget := 11 * time.Minute
-	if command == "install" {
+	if command == "install" || command == "push" {
 		budget = 90 * time.Minute
 	}
 	operationCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
+	if command == "push" {
+		sender, err := ble.NewImageSender(*id, token, *app)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		last := -1
+		err = sender.Push(operationCtx, pkg, func(done, total int) {
+			percent := done * 100 / total
+			if percent != last {
+				last = percent
+				fmt.Fprintf(stderr, "image upload %d%% (%d/%d bytes)\n", percent, done, total)
+			}
+		})
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "display completed; authenticated BLE receipt confirms refresh and final POWER_OFF")
+		return 0
+	}
 	plans := make(chan managementPlan, 1)
 	// At most the original read and one recovery read can finish, including a
 	// native cleanup failure after the original read already succeeded.

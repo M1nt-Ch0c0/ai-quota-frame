@@ -19,6 +19,7 @@ type Config struct {
 	PhotoFramePushURL   string
 	PhotoFramePushToken string
 	PhotoFrameDeviceID  string
+	PhotoFrameTransport string
 	CPAMPBaseURL        string
 	CPAMPAdminKey       string
 	// GoogleServiceAccountFile replaces both management keys with a Google ID
@@ -80,6 +81,7 @@ func FromEnv() (Config, error) {
 		PhotoFramePushURL:   strings.TrimSpace(os.Getenv("PHOTOFRAME_PUSH_URL")),
 		PhotoFramePushToken: os.Getenv("PHOTOFRAME_PUSH_TOKEN"),
 		PhotoFrameDeviceID:  strings.TrimSpace(os.Getenv("PHOTOFRAME_DEVICE_ID")),
+		PhotoFrameTransport: envString("PHOTOFRAME_PUSH_TRANSPORT", "http"),
 		DisplayProviders:    providers,
 		FrameTheme:          theme,
 		LastFramePath:       strings.TrimSpace(os.Getenv("LAST_FRAME_PATH")),
@@ -128,6 +130,12 @@ func FromEnv() (Config, error) {
 	}
 	if (config.PhotoFramePushURL == "" && config.PhotoFrameDeviceID == "") || config.PhotoFramePushToken == "" {
 		return Config{}, errors.New("PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required")
+	}
+	if config.PhotoFrameTransport != "http" && config.PhotoFrameTransport != "ble" {
+		return Config{}, errors.New("PHOTOFRAME_PUSH_TRANSPORT must be http or ble")
+	}
+	if config.PhotoFrameTransport == "ble" && config.PhotoFrameDeviceID == "" {
+		return Config{}, errors.New("PHOTOFRAME_DEVICE_ID or a saved binding is required for BLE image transport")
 	}
 	if config.PhotoFramePushURL != "" {
 		if err := validatePhotoFramePushURL(config.PhotoFramePushURL); err != nil {

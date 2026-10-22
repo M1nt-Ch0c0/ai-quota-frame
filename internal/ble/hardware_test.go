@@ -24,6 +24,8 @@ type hardwareState struct {
 	Loaded       int    `json:"loaded_app"`
 	UptimeMS     uint64 `json:"uptime_ms"`
 	ResetReason  int    `json:"reset_reason"`
+	Version      uint32 `json:"version"`
+	RuntimeReady bool   `json:"runtime_ready"`
 	FreeInternal uint32 `json:"free_internal_ram"`
 	FreePSRAM    uint32 `json:"free_psram"`
 	MinInternal  uint32 `json:"minimum_free_internal_ram"`
