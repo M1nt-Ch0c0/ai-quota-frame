@@ -34,19 +34,32 @@ func mustUUID(value string) bluetooth.UUID {
 	return id
 }
 
-type nativeLink struct {
-	info, challenge, rx, tx bluetooth.DeviceCharacteristic
-	writeSize               int
+type nativeCharacteristic interface {
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	GetMTU() (uint16, error)
 }
 
-func readCharacteristic(ctx context.Context, c bluetooth.DeviceCharacteristic) ([]byte, error) {
+type nativeLink struct {
+	info, challenge, rx, tx nativeCharacteristic
+	writeSize               int
+	requestThroughput       func() error
+}
+
+func (l *nativeLink) preferThroughput() {
+	if l.requestThroughput != nil {
+		_ = l.requestThroughput()
+	}
+}
+
+func readCharacteristic(ctx context.Context, c nativeCharacteristic) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	p := make([]byte, 512)
 	n, err := c.Read(p)
 	if err != nil {
-		return nil, errors.New("BLE characteristic read failed")
+		return nil, fmt.Errorf("BLE characteristic read failed: %w", err)
 	}
 	if n < 0 || n > len(p) {
 		return nil, errors.New("oversize BLE characteristic")
@@ -83,8 +96,11 @@ func (l *nativeLink) Exchange(ctx context.Context, request []byte) ([]byte, erro
 		binary.LittleEndian.PutUint16(fragment[2:], uint16(len(request)))
 		fragment = append(fragment, request[offset:end]...)
 		n, err := l.rx.Write(fragment)
-		if err != nil || n != len(fragment) {
-			return nil, errors.New("BLE fragment write failed; reconnect and retry the whole package")
+		if err != nil {
+			return nil, fmt.Errorf("BLE fragment write failed; reconnect and retry the whole package: %w", err)
+		}
+		if n != len(fragment) {
+			return nil, errors.New("short BLE fragment write; reconnect and retry the whole package")
 		}
 		offset = end
 	}
@@ -123,20 +139,20 @@ func withRadio(ctx context.Context, job func(*bluetooth.Adapter) error) error {
 	done := make(chan error, 1)
 	go func() {
 		defer func() { <-radioSlot }()
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		adapter := bluetooth.DefaultAdapter
-		cleanup, err := enableAdapter(adapter)
-		if err != nil {
-			done <- errors.New("BLE adapter unavailable; enable Bluetooth and grant OS permissions")
-			return
-		}
-		defer cleanup()
-		if err := ctx.Err(); err != nil {
-			done <- err
-			return
-		}
-		done <- job(adapter)
+		done <- containNativeFailure(func() error {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			adapter := bluetooth.DefaultAdapter
+			cleanup, err := enableAdapter(adapter)
+			if err != nil {
+				return errors.New("BLE adapter unavailable; enable Bluetooth and grant OS permissions")
+			}
+			defer cleanup()
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return job(adapter)
+		})
 	}()
 	select {
 	case err := <-done:
@@ -223,39 +239,39 @@ func Scan(ctx context.Context) ([]DeviceInfo, error) {
 // WithClient scans by the stable ID, authenticates, runs one bounded operation,
 // then disconnects. It does not read or modify .env or start a listener.
 func WithClient(ctx context.Context, id, token string, job func(context.Context, *Client) error) error {
-	id, err := NormalizeID(id)
-	if err != nil {
+	if err := validateToken(token); err != nil {
 		return err
 	}
-	return withRadio(ctx, func(adapter *bluetooth.Adapter) error {
-		scanCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		address, err := discover(scanCtx, adapter, id)
-		cancel()
-		if err != nil {
-			return err
-		}
-		device, err := adapter.Connect(address, bluetooth.ConnectionParams{ConnectionTimeout: bluetooth.NewDuration(10 * time.Second)})
-		if err != nil {
-			return errors.New("BLE connection failed")
-		}
-		defer device.Disconnect()
-		services, err := device.DiscoverServices([]bluetooth.UUID{serviceUUID})
-		if err != nil || len(services) != 1 {
-			return errors.New("PhotoPainter BLE service unavailable")
-		}
-		chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{infoUUID, challengeUUID, rxUUID, txUUID})
-		if err != nil || len(chars) != 4 {
-			return errors.New("PhotoPainter BLE characteristics unavailable")
-		}
-		link := &nativeLink{info: chars[0], challenge: chars[1], rx: chars[2], tx: chars[3], writeSize: 20}
-		if mtu, err := link.rx.GetMTU(); err == nil && mtu >= 23 {
-			link.writeSize = min(int(mtu)-3, 512)
-		}
+	return withNativeLink(ctx, id, func(link *nativeLink) error {
 		client, err := Authenticate(ctx, link, id, token)
 		if err != nil {
 			return err
 		}
 		return job(ctx, client)
+	})
+}
+
+func withNativeLink(ctx context.Context, id string, job func(*nativeLink) error) error {
+	id, err := NormalizeID(id)
+	if err != nil {
+		return err
+	}
+	return withRadio(ctx, func(adapter *bluetooth.Adapter) error {
+		// WinRT disconnect is asynchronous; allow the peripheral to re-advertise
+		// between consecutive CLI sessions. Background discovery still has its
+		// separate 30-second outer deadline.
+		scanCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		address, err := discover(scanCtx, adapter, id)
+		cancel()
+		if err != nil {
+			return err
+		}
+		link, closeLink, err := openNativeLink(ctx, adapter, address)
+		if err != nil {
+			return err
+		}
+		defer closeLink()
+		return job(link)
 	})
 }
 

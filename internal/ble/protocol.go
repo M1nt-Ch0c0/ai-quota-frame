@@ -37,6 +37,8 @@ const (
 
 const MaxPackageSize = 1024 * 1024
 
+var ErrAuthentication = errors.New("BLE response authentication failed; reconnect (token may be wrong or unconfigured)")
+
 type DeviceInfo struct {
 	Version  byte       `json:"version"`
 	State    byte       `json:"state"`
@@ -88,18 +90,25 @@ func Authenticate(ctx context.Context, link Link, id, token string) (*Client, er
 	return authenticate(ctx, link, id, token, rand.Reader)
 }
 
+func validateToken(token string) error {
+	if len(token) < 32 || len(token) > 128 {
+		return errors.New("PHOTOFRAME_PUSH_TOKEN must be 32..128 printable ASCII bytes")
+	}
+	for i := range token {
+		if token[i] < 0x21 || token[i] > 0x7e {
+			return errors.New("PHOTOFRAME_PUSH_TOKEN contains invalid bytes")
+		}
+	}
+	return nil
+}
+
 func authenticate(ctx context.Context, link Link, id, token string, random io.Reader) (*Client, error) {
 	id, err := NormalizeID(id)
 	if err != nil {
 		return nil, err
 	}
-	if len(token) < 32 || len(token) > 128 {
-		return nil, errors.New("PHOTOFRAME_PUSH_TOKEN must be 32..128 printable ASCII bytes")
-	}
-	for i := range token {
-		if token[i] < 0x21 || token[i] > 0x7e {
-			return nil, errors.New("PHOTOFRAME_PUSH_TOKEN contains invalid bytes")
-		}
+	if err := validateToken(token); err != nil {
+		return nil, err
 	}
 	record, err := link.Info(ctx)
 	if err != nil {
@@ -150,7 +159,7 @@ func (c *Client) verify(op byte, seq uint32, p []byte) ([]byte, error) {
 	if len(p) < 39 || len(p) > 512 || p[0] != op || binary.LittleEndian.Uint32(p[1:5]) != seq ||
 		!hmac.Equal(tag(c.key, "pp-ble-v1/response", p[:len(p)-32]), p[len(p)-32:]) {
 		c.dead = true
-		return nil, errors.New("BLE response authentication failed; reconnect (token may be wrong or unconfigured)")
+		return nil, ErrAuthentication
 	}
 	if code := binary.LittleEndian.Uint16(p[5:7]); code != 0 {
 		return nil, DeviceError(code)
@@ -277,6 +286,11 @@ func (c *Client) Install(ctx context.Context, p []byte, progress func(int, int))
 	metadata, err := InspectPackage(p)
 	if err != nil {
 		return err
+	}
+	// A throughput hint is useful only for a sustained authenticated transfer.
+	// Unsupported adapters retain their defaults; correctness is unchanged.
+	if link, ok := c.link.(interface{ preferThroughput() }); ok {
+		link.preferThroughput()
 	}
 	id, _ := encodeApp(metadata.App)
 	digest := sha256.Sum256(p)

@@ -3,11 +3,41 @@ package ble
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestNativeFailureDoesNotExposePayloadOrCrashCaller(t *testing.T) {
+	err := containNativeFailure(func() error { panic("synthetic-private-payload") })
+	if err == nil || strings.Contains(err.Error(), "synthetic-private") {
+		t.Fatal("native panic was not sanitized")
+	}
+	want := errors.New("ordinary error")
+	if got := containNativeFailure(func() error { return want }); got != want {
+		t.Fatal("ordinary errors changed")
+	}
+}
+
+func TestGATTDiscoveryRetriesAreBoundedAndCancellable(t *testing.T) {
+	count := 0
+	if err := retryDiscovery(context.Background(), func() error {
+		count++
+		if count < 3 {
+			return errors.New("not ready")
+		}
+		return nil
+	}); err != nil || count != 3 {
+		t.Fatal(count, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	count = 0
+	if err := retryDiscovery(ctx, func() error { count++; cancel(); return errors.New("not ready") }); !errors.Is(err, context.Canceled) || count != 1 {
+		t.Fatal(count, err)
+	}
+}
 
 func TestScanDuplicateAdvertisementsAndCancellationStopOnlyOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

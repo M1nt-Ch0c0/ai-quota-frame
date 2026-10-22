@@ -120,6 +120,11 @@ func FromEnv() (Config, error) {
 		if err != nil {
 			return Config{}, errors.New("PHOTOFRAME_DEVICE_ID must be a 12-digit hexadecimal device ID")
 		}
+	} else {
+		config.PhotoFrameDeviceID, err = ble.LoadBinding()
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	if (config.PhotoFramePushURL == "" && config.PhotoFrameDeviceID == "") || config.PhotoFramePushToken == "" {
 		return Config{}, errors.New("PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required")

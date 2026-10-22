@@ -21,11 +21,27 @@ configuration continues to work. Do not pass tokens in command-line arguments.
 The program does not read, rewrite or save `.env`, and does not save a new IP to
 disk. Continue using the existing trusted launcher to load environment variables.
 
+Alternatively, after loading the token through that launcher, bind once without
+editing `.env`:
+
+```sh
+ai-quota-frame ble bind --device-id 001122334455
+```
+
+Bind authenticates the device before atomically saving only its public ID in
+`ai-quota-frame/ble-device.json` under the OS user configuration directory
+(`%APPDATA%` on Windows). The next service start uses this ID automatically.
+The explicit environment ID takes precedence. `ble unbind` removes the binding;
+restart the service to apply. `PHOTOFRAME_BLE_BINDING_FILE` may override the path
+with an absolute filename. This separate JSON never contains the token, IP or
+Wi-Fi credentials; a damaged record is rejected rather than silently replaced.
+
 At startup and after a push failure the serialized worker scans for that ID,
 connects and performs mutual HMAC authentication, then uses the **authenticated**
 private IPv4 record to update its in-memory `/api/push` target. A spoofed broadcast
 alone cannot redirect a Bearer-bearing request. Discovery is throttled to once
-per 30 seconds, has a 30-second outer deadline and a 15-second scan window. A
+per 30 seconds and has a 30-second outer deadline. A CLI connection allows up to
+30 seconds for scanning, including asynchronous Windows disconnect delays. A
 failed scan keeps the last address. A successful scan does not immediately repeat
 a failed physical push: existing status classification, deduplication, latest
 snapshot behavior, retry delay and the 11-minute HTTP deadline still apply.
@@ -54,7 +70,7 @@ ai-quota-frame ble rollback --device-id 001122334455 --app photoframe
 ai-quota-frame ble remove --device-id 001122334455 --app unused-app
 ```
 
-`--device-id` can be omitted when `PHOTOFRAME_DEVICE_ID` is set. Package files
+`--device-id` can be omitted when `PHOTOFRAME_DEVICE_ID` or a saved binding is set. Package files
 must come from the host's unchanged `tools/module.py package` format (4096-byte
 header, ELF payload, per-payload SHA-256, format 1/2 and ABI 1/2). The client checks
 the envelope/hash; the host additionally validates ELF/manifest/imports.
@@ -74,6 +90,13 @@ already-started operation after the client disconnects. Installation has a
 90-minute outer deadline to accommodate large packages at MTU 23; other operations
 retain an 11-minute bound. The host still releases idle transfers after 60 seconds.
 
+A custom GATT database change can invalidate Windows handles during activation.
+The CLI records the expected app, bank, slot and version before a management
+command. If its result becomes ambiguous while time remains, it reconnects once
+and checks authenticated status against that expectation. It reports success
+only when the requested running version or removal is proven; it never repeats
+the mutation. An explicit device error such as busy is returned directly.
+
 The BLE link is not encrypted. The token is never transmitted, and nonces,
 direction-specific HMACs and monotonic sequence numbers protect commands and
 responses from modification and replay. Packages and status remain observable.
@@ -82,9 +105,21 @@ See the host's [wire protocol](https://github.com/M1nt-Ch0c0/photopainter-host/b
 
 ## Platforms and validation
 
-The dependency is pinned to `tinygo.org/x/bluetooth v0.16.0`. Windows uses native
-WinRT and builds with `CGO_ENABLED=0`; operations initialize and release WinRT on
-one locked OS thread. Linux uses BlueZ/D-Bus. macOS requires a native **CGO-enabled**
+Scanning and the Unix adapters use `tinygo.org/x/bluetooth`, pinned to official
+commit `d679711fe223f8b4631cc9e172b49d193149711b`
+(`v0.16.1-0.20261017194140-d679711fe223`). This unreleased revision includes
+Windows advertisement UUID and scan-response fixes. The v0.16.0 disconnect
+callback could release a session twice and crashed during device validation;
+see [upstream fix](https://github.com/tinygo-org/bluetooth/commit/a0233b3d7010a9327ab34e346b0faf0f9e213922).
+
+Windows GATT connections use `winrt-go` directly, with explicit ownership of
+device, session, service and characteristic references. Operations initialize
+and release WinRT on one locked OS thread. Uncached discovery establishes the
+connection; cleanup releases characteristic references and closes services
+before turning off `MaintainConnection`, closing the session and device. No
+connection callback frees a live object. Sustained authenticated installs request
+Windows throughput preference; unsupported adapters retain their defaults.
+The build uses `CGO_ENABLED=0`. Linux uses BlueZ/D-Bus. macOS requires a native **CGO-enabled**
 build, Xcode command-line tools and permission for Bluetooth in System Settings:
 
 ```sh
@@ -106,9 +141,28 @@ transfer loss, cancellation, explicit activation and frozen status pages. Pusher
 tests cover rediscovery without an immediate repeat, fallback, throttle and
 startup. `make check` runs tests, race tests, vet and a static build; rendering
 tests requiring Chrome are skipped when Chrome is absent. Windows cross-build
-passes. Native Windows/macOS radio behavior still requires the authorized
-hardware checklist in the host's `docs/validation-ble.md`; no radio was opened
-to develop or run these tests.
+passes. Authorized Windows radio tests and their exact results are recorded in
+the host's `docs/validation-ble.md`. Native macOS radio validation remains pending.
+
+Device checks are separately compiled with `-tags photopainter_hardware`; normal
+`make check` never opens a radio or displays an image. The opt-in tests require
+the token only through the trusted process environment:
+
+```sh
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -tags photopainter_hardware -c -o dist/photopainter-ble-hardware.exe ./internal/ble
+```
+
+`PHOTOFRAME_HARDWARE_TEST=stage-only` runs `TestHardwareBLEUpload` with an explicit
+`PHOTOFRAME_HARDWARE_PACKAGE` for a previously absent `ble-echo` application; it
+stages and removes the candidate without activation. `PHOTOFRAME_HARDWARE_HTTP=busy-only`
+also checks HTTP 409 during reception. `discovery-only` runs
+`TestHardwareDiscoveryDeadline`; `echo-probe`/`echo-absent` run
+`TestHardwareApplicationGATT` after deliberate activation/switch-out.
+`display-once` runs `TestHardwareHTTPDisplay`, requiring an explicit validated
+5 MiB `PHOTOFRAME_HARDWARE_PNG` and the original photoframe selected. This last
+mode performs **one physical refresh**, requires separate hardware authorization
+and human visual confirmation, and must never be retried automatically after an
+ambiguous result. Stop the automatic pusher/watchdog before all device checks.
 
 No listening port was added. The Windows watchdog must continue checking only
 whether `ai-quota-frame.exe` exists; the retired `:8787/healthz` flow stays removed.

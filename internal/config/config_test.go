@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -244,6 +245,7 @@ func validPushToken() string {
 }
 
 func clearConfigEnv(t *testing.T) {
+	t.Setenv("PHOTOFRAME_BLE_BINDING_FILE", filepath.Join(t.TempDir(), "ble-device.json"))
 	t.Helper()
 	for _, name := range []string{
 		"CLIPROXY_BASE_URL", "CLIPROXY_MANAGEMENT_KEY",

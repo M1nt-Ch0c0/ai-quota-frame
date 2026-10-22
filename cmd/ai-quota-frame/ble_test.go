@@ -9,6 +9,7 @@ import (
 )
 
 func TestBLECLIValidatesBeforeOpeningRadio(t *testing.T) {
+	t.Setenv("PHOTOFRAME_BLE_BINDING_FILE", filepath.Join(t.TempDir(), "ble-device.json"))
 	t.Setenv("PHOTOFRAME_PUSH_TOKEN", "")
 	t.Setenv("PHOTOFRAME_DEVICE_ID", "")
 	for _, args := range [][]string{nil, {"unknown"}, {"status"}, {"status", "--device-id", "001122334455"}, {"install", "--file", filepath.Join(t.TempDir(), "missing.pkg")}} {

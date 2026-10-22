@@ -18,7 +18,7 @@ import (
 // No quota credentials, Chrome, listeners, or .env reads are needed for BLE CLI.
 func runBLE(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|info|status|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
+		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|bind|unbind|info|status|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
 		return 2
 	}
 	command := args[0]
@@ -35,6 +35,22 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	if flags.NArg() != 0 {
 		fmt.Fprintln(stderr, "unexpected positional arguments")
 		return 2
+	}
+	if command == "unbind" {
+		if err := ble.RemoveBinding(); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "device binding removed; restart the service to apply")
+		return 0
+	}
+	if *id == "" && command != "bind" && command != "inspect" && command != "scan" {
+		bound, err := ble.LoadBinding()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		*id = bound
 	}
 	var pkg []byte
 	if command == "install" || command == "inspect" {
@@ -62,7 +78,7 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	ops := map[string]byte{"activate": ble.OpActivate, "switch": ble.OpSwitch, "rollback": ble.OpRollback, "remove": ble.OpRemove}
-	if command != "scan" && command != "info" && command != "status" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
+	if command != "scan" && command != "bind" && command != "info" && command != "status" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
 		fmt.Fprintln(stderr, "unknown BLE command")
 		return 2
 	}
@@ -106,8 +122,18 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	}
 	operationCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
+	plans := make(chan managementPlan, 1)
+	// At most the original read and one recovery read can finish, including a
+	// native cleanup failure after the original read already succeeded.
+	managementResult := make(chan json.RawMessage, 2)
 	err := ble.WithClient(operationCtx, *id, token, func(ctx context.Context, c *ble.Client) error {
 		switch command {
+		case "bind":
+			if err := ble.SaveBinding(c.Info().ID); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(stdout, "authenticated device ID saved separately from .env; restart the service to apply")
+			return err
 		case "app-write":
 			if err := c.AppWrite(ctx, *app, uint32(*characteristic), []byte(*text)); err != nil {
 				return err
@@ -149,6 +175,15 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 			_, err := fmt.Fprintln(stdout, "staged; use ble activate explicitly to trial and confirm the application")
 			return err
 		default:
+			before, err := c.Status(ctx)
+			if err != nil {
+				return err
+			}
+			plan, err := planManagement(ops[command], *app, before)
+			if err != nil {
+				return err
+			}
+			plans <- plan
 			if err := c.Manage(ctx, ops[command], *app); err != nil {
 				return err
 			}
@@ -156,9 +191,35 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 			if err != nil {
 				return err
 			}
-			return json.NewEncoder(stdout).Encode(status)
+			managementResult <- status
+			return nil
 		}
 	})
+	if err != nil && ops[command] != 0 && operationCtx.Err() == nil {
+		var rejected ble.DeviceError
+		if !errors.As(err, &rejected) {
+			select {
+			case plan := <-plans:
+				// A fresh authenticated read can prove completion after Windows
+				// invalidates GATT handles. Never replay an uncertain mutation.
+				checkErr := ble.WithClient(operationCtx, *id, token, func(ctx context.Context, c *ble.Client) error {
+					status, e := c.Status(ctx)
+					if e != nil {
+						return e
+					}
+					if !plan.reached(status) {
+						return errors.New("requested management state was not reached")
+					}
+					managementResult <- status
+					return nil
+				})
+				if checkErr == nil {
+					err = nil
+				}
+			default:
+			}
+		}
+	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			fmt.Fprintln(stderr, "BLE operation timed out; reconnect and query status before retrying activation")
@@ -166,6 +227,16 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 		}
 		return 1
+	}
+	if ops[command] != 0 {
+		status := <-managementResult
+		select {
+		case status = <-managementResult:
+		default:
+		}
+		if json.NewEncoder(stdout).Encode(status) != nil {
+			return 1
+		}
 	}
 	return 0
 }
