@@ -25,7 +25,7 @@ Use the Go version declared by `go.mod` and a locally installed Chrome or Chromi
 make check
 ```
 
-`make check` must run unit tests, race tests, vet, and a static build. Test rendering, cancellation, deduplication, replacement, retries, redirect rejection, and status classification with local test servers before involving hardware.
+`make check` must run unit tests, race tests, vet, and a build (static on Linux/Windows; native CGO on macOS for CoreBluetooth). Test rendering, cancellation, deduplication, replacement, retries, redirect rejection, and status classification with local test servers before involving hardware.
 
 For a Windows build:
 

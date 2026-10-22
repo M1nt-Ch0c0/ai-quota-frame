@@ -45,7 +45,7 @@ launcher.write_text("""#!/bin/sh
 set -a
 . "./.env"
 set +a
-exec /usr/bin/caffeinate -i -s ./ai-quota-frame
+exec /usr/bin/caffeinate -i -s ./ai-quota-frame "$@"
 """)
 launcher.chmod(0o700)
 # macOS 15+ requires a responsible app identity for a user LaunchAgent's local
@@ -65,6 +65,7 @@ executable.parent.mkdir(parents=True, exist_ok=True)
             "CFBundleVersion": "1",
             "LSUIElement": True,
             "NSLocalNetworkUsageDescription": "Send rendered quota images to your PhotoPainter on the local Wi-Fi network.",
+            "NSBluetoothAlwaysUsageDescription": "Find your PhotoPainter and manage its applications over Bluetooth.",
         }
     )
 )

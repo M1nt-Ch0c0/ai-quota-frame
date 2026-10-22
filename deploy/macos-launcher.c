@@ -4,9 +4,10 @@
 #include <limits.h>
 #include <pwd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
-int main(void) {
+int main(int argc, char **argv) {
     const struct passwd *user = getpwuid(getuid());
     char directory[PATH_MAX];
     if (user == NULL) {
@@ -19,7 +20,19 @@ int main(void) {
         perror("PhotoPainter runtime directory");
         return 1;
     }
-    execl("/bin/sh", "sh", "./start.sh", (char *)NULL);
+    /* CLI commands use the same app identity, private environment and Bluetooth
+     * permission as launchd. No credential is supplied in the arguments. */
+    char **args = calloc((size_t)argc + 2, sizeof(*args));
+    if (args == NULL) {
+        return 1;
+    }
+    args[0] = "sh";
+    args[1] = "./start.sh";
+    for (int i = 1; i < argc; i++) {
+        args[i + 1] = argv[i];
+    }
+    execv("/bin/sh", args);
     perror("PhotoPainter launcher");
+    free(args);
     return 1;
 }

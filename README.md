@@ -66,7 +66,7 @@ set +a
 
 ## macOS 常驻运行
 
-先配置忽略的 `.env` 并执行 `make check`，再运行：
+先配置忽略的 `.env` 并执行 `GOTOOLCHAIN=go1.26.0 make check`，再运行：
 
 ```sh
 python3 deploy/install-macos.py --env-file .env
@@ -74,9 +74,19 @@ python3 deploy/install-macos.py --env-file .env
 
 首次调试尚未取得实体刷屏成功时，使用 `--no-start` 只安装并禁用自动启动；确认刷屏成功后重新运行不带该参数的安装命令。
 
-安装器使用 Xcode Command Line Tools 编译本地启动器，在 `~/Applications/PhotoPainter Renderer.app` 建立应用身份，并更新用户级 `com.m1ntch0c0.ai-quota-frame` LaunchAgent，登录自动启动，异常退出后重启。应用声明 `NSLocalNetworkUsageDescription`，LaunchAgent 通过 `AssociatedBundleIdentifiers` 关联应用，遵循 [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)。首次出现本地网络提示时允许其访问相框；若出现 `no route to host`，同时检查实际 Wi-Fi 路由和“隐私与安全性 → 本地网络”，不能仅凭这个错误断定是权限问题。凭据只保存在权限 0600 的本地配置文件中。运行期间通过 `caffeinate` 阻止空闲休眠，日志位于 `~/Library/Logs/photopainter-render.log`。硬件诊断或模块升级前先 `launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame` 停止自动推图。
+macOS 的 `make build`/`make check` 默认启用 CGO，以编译 CoreBluetooth；需要本机 Xcode 工具链。`BUILD_CGO_ENABLED=0` 可显式构建仅 HTTP 的版本，但该版本不能执行 BLE 发现或应用安装。Linux/Windows 构建保持静态。
 
-远端管理接口通过 SSH loopback 转发连接，本机 28317、28318 分别转发至远端 8317、18317。先在本机 SSH 配置中建立 `photopainter-source` 别名，设置真实服务器、登录用户及已有密钥，并核验服务器主机指纹。确认无需交互认证：
+安装器使用 Xcode Command Line Tools 编译本地启动器，在 `~/Applications/PhotoPainter Renderer.app` 建立应用身份，并更新用户级 `com.m1ntch0c0.ai-quota-frame` LaunchAgent，登录自动启动，异常退出后重启。应用声明 `NSLocalNetworkUsageDescription` 和 `NSBluetoothAlwaysUsageDescription`，LaunchAgent 通过 `AssociatedBundleIdentifiers` 关联应用，遵循 [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)。首次出现本地网络或蓝牙提示时，在 Mac 图形界面允许该应用访问；SSH 本身不会代替用户授予系统隐私权限。若出现 `no route to host`，同时检查实际 Wi-Fi 路由和“隐私与安全性 → 本地网络”，不能仅凭这个错误断定是权限问题。凭据只保存在权限 0600 的本地配置文件中。运行期间通过 `caffeinate` 阻止空闲休眠，日志位于 `~/Library/Logs/photopainter-render.log`。硬件诊断或模块升级前先 `launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame` 停止自动推图。
+
+已安装的应用启动器也接受 BLE 命令，并私下加载同一份运行配置。例如通过应用身份发起首次绑定：
+
+```sh
+open -n -W "$HOME/Applications/PhotoPainter Renderer.app" --args ble bind --device-id 001122334455
+```
+
+启动器不会将令牌写入参数或应用包。迁移到另一台电脑时，先验证新机器的配置、蓝牙和网络；切换时停止旧机器的自动推图，避免两个服务同时刷新同一块屏幕。
+
+使用前述 Google ID Token 网关时，不需要源站 SSH 隧道。若采用已有的 SSH loopback 数据源部署，本机 28317、28318 可分别转发至远端 8317、18317。先在本机 SSH 配置中建立 `photopainter-source` 别名，设置真实服务器、登录用户及已有密钥，并核验服务器主机指纹。确认无需交互认证：
 
 ```sh
 ssh -o BatchMode=yes -o StrictHostKeyChecking=yes photopainter-source true

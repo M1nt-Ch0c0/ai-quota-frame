@@ -139,7 +139,8 @@ Local tests cover protocol vectors shared with the C host, wrong token/identity,
 spoofed unsigned or modified responses, replay, package framing/checksums,
 transfer loss, cancellation, explicit activation and frozen status pages. Pusher
 tests cover rediscovery without an immediate repeat, fallback, throttle and
-startup. `make check` runs tests, race tests, vet and a static build; rendering
+startup. `make check` runs tests, race tests, vet and a build (native CGO on macOS,
+static elsewhere); rendering
 tests requiring Chrome are skipped when Chrome is absent. Windows cross-build
 passes. Authorized Windows radio tests and their exact results are recorded in
 the host's `docs/validation-ble.md`. Native macOS radio validation remains pending.
