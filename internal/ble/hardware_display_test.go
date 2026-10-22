@@ -27,20 +27,24 @@ func TestHardwareHTTPDisplay(t *testing.T) {
 	if mode != "display-once" && mode != "http-rejections" {
 		t.Skip("explicit one-display hardware opt-in required")
 	}
-	payload, err := os.ReadFile(os.Getenv("PHOTOFRAME_HARDWARE_PNG"))
-	if err != nil || len(payload) != 5*1024*1024 || payload[28] != 0 {
-		t.Fatal("explicit 5 MiB validation PNG required")
-	}
-	img, err := png.Decode(bytes.NewReader(payload))
-	if err != nil || img.Bounds().Dx() != 800 || img.Bounds().Dy() != 480 {
-		t.Fatal("invalid validation PNG geometry")
-	}
-	allowed := map[[4]uint32]bool{{0, 0, 0, 65535}: true, {65535, 65535, 65535, 65535}: true, {65535, 65535, 0, 65535}: true, {65535, 0, 0, 65535}: true, {0, 0, 65535, 65535}: true, {0, 65535, 0, 65535}: true}
-	for y := 0; y < 480; y++ {
-		for x := 0; x < 800; x++ {
-			r, g, b, a := img.At(x, y).RGBA()
-			if !allowed[[4]uint32{r, g, b, a}] {
-				t.Fatal("validation PNG is not opaque six-color")
+	var payload []byte
+	var err error
+	if mode == "display-once" {
+		payload, err = os.ReadFile(os.Getenv("PHOTOFRAME_HARDWARE_PNG"))
+		if err != nil || len(payload) != 5*1024*1024 || payload[28] != 0 {
+			t.Fatal("explicit 5 MiB validation PNG required")
+		}
+		img, err := png.Decode(bytes.NewReader(payload))
+		if err != nil || img.Bounds().Dx() != 800 || img.Bounds().Dy() != 480 {
+			t.Fatal("invalid validation PNG geometry")
+		}
+		allowed := map[[4]uint32]bool{{0, 0, 0, 65535}: true, {65535, 65535, 65535, 65535}: true, {65535, 65535, 0, 65535}: true, {65535, 0, 0, 65535}: true, {0, 0, 65535, 65535}: true, {0, 65535, 0, 65535}: true}
+		for y := 0; y < 480; y++ {
+			for x := 0; x < 800; x++ {
+				r, g, b, a := img.At(x, y).RGBA()
+				if !allowed[[4]uint32{r, g, b, a}] {
+					t.Fatal("validation PNG is not opaque six-color")
+				}
 			}
 		}
 	}
@@ -98,7 +102,7 @@ func TestHardwareHTTPDisplay(t *testing.T) {
 		}{
 			{"missing token", "", make([]byte, 8), 401},
 			{"wrong token", wrong, make([]byte, 8), 401},
-			{"oversize", token, make([]byte, 5*1024*1024+1), 413},
+			{"oversize", token, nil, 413},
 			{"invalid PNG", token, make([]byte, 8), 422},
 		} {
 			var code int
@@ -201,10 +205,11 @@ func TestHardwareHTTPDisplay(t *testing.T) {
 	}
 }
 
-// Send the oversized Content-Length without a body. Some embedded servers send
+// Send the oversized Content-Length and one invalid body byte. IDF dispatches
+// its handler from the first body callback. Some embedded servers send
 // 100 Continue before the handler's 413, and a general HTTP client then races a
 // large body write against the connection close. This checks rejection at the
-// headers, before any image data or display operation can be accepted.
+// start of the body, before a valid image or display can be accepted.
 func hwOversizeHTTP(ctx context.Context, target, token string) (int, error) {
 	u, err := url.Parse(target)
 	if err != nil || u.Scheme != "http" {
@@ -219,7 +224,7 @@ func hwOversizeHTTP(ctx context.Context, target, token string) (int, error) {
 	if err = conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		return 0, err
 	}
-	_, err = fmt.Fprintf(conn, "POST /api/push HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: image/png\r\nContent-Length: 5242881\r\nConnection: close\r\n\r\n", u.Host, token)
+	_, err = fmt.Fprintf(conn, "POST /api/push HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: image/png\r\nContent-Length: 5242881\r\nConnection: close\r\n\r\n\x00", u.Host, token)
 	if err != nil {
 		return 0, errors.New("oversize header write failed")
 	}
