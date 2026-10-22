@@ -23,7 +23,8 @@ import (
 // a request whose final response is lost. Human visual confirmation is still
 // required after HTTP 200. Keep the automatic pusher/watchdog stopped.
 func TestHardwareHTTPDisplay(t *testing.T) {
-	if os.Getenv("PHOTOFRAME_HARDWARE_TEST") != "display-once" {
+	mode := os.Getenv("PHOTOFRAME_HARDWARE_TEST")
+	if mode != "display-once" && mode != "http-rejections" {
 		t.Skip("explicit one-display hardware opt-in required")
 	}
 	payload, err := os.ReadFile(os.Getenv("PHOTOFRAME_HARDWARE_PNG"))
@@ -114,6 +115,9 @@ func TestHardwareHTTPDisplay(t *testing.T) {
 				return fmt.Errorf("%s: expected HTTP %d, received %d", check.name, check.want, code)
 			}
 			t.Logf("HTTP %d: %s rejected", code, check.name)
+		}
+		if mode == "http-rejections" {
+			return nil
 		}
 		hwMemory(t, "before-display", before)
 		gate := &hardwareBodyGate{reader: bytes.NewReader(payload), ctx: ctx, paused: make(chan struct{}), resume: make(chan struct{})}

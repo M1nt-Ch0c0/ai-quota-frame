@@ -163,6 +163,9 @@ also checks HTTP 409 during reception. `discovery-only` runs
 mode performs **one physical refresh**, requires separate hardware authorization
 and human visual confirmation, and must never be retried automatically after an
 ambiguous result. Stop the automatic pusher/watchdog before all device checks.
+`http-rejections` runs only that test's 401/413/422 probes and never sends the
+valid image; it is suitable for finishing rejection checks after a completed
+physical refresh without needlessly repainting the panel.
 
 No listening port was added. The Windows watchdog must continue checking only
 whether `ai-quota-frame.exe` exists; the retired `:8787/healthz` flow stays removed.
