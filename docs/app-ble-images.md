@@ -17,6 +17,8 @@ open -n -W "$HOME/Applications/PhotoPainter Renderer.app" --args ble push --file
 BEGIN/CHUNK 只表示接收进度；COMMIT 后必须取得匹配 ID、长度、SHA 的 complete/OK 回执，
 才算物理刷新及最终 POWER_OFF 完成。服务仍只在成功后保存 `last-frame.png`。
 
+宿主定时事件可能短暂占用共享接纳锁；仅对签名 busy（宿主码 3，证明命令没有被接纳）
+等待 50 毫秒后重试。传输错误或鉴权错误不会触发这种重试。
 COMMIT 前断线可用新请求 ID 重传。COMMIT 可能到达设备后，重试只查询原请求。
 切出、重启或回执缺失/不匹配会永久停止本进程对该图片摘要的自动重试；中间换过快照也不清除该决定。
 仅依赖 RAM，不保证跨程序重启的永久去重。相框切出时其收图内存与服务注销，宿主发现与应用 OTA 常驻。
@@ -32,10 +34,12 @@ GOTOOLCHAIN=go1.26.0 go test -tags photopainter_hardware -c -o dist/photopainter
 ```
 
 `PHOTOFRAME_HARDWARE_TEST=app-image-safety` 运行 `TestHardwareAppImageSafety`，
-要求设备无 Wi-Fi，验证 APP 5 MiB PSRAM 预约、断线释放、坏 PNG 拒绝和取消；不提交有效图。
+要求设备无 Wi-Fi，验证 APP 5 MiB PSRAM 预约、断线释放、坏 PNG 拒绝、取消和 60 秒 APP 空闲超时；不提交有效图。
 `app-image-display` 运行 `TestHardwareAppImageDisplay`，额外需要显式
 `PHOTOFRAME_HARDWARE_PNG`，只提交一次有效图，丢弃 APP COMMIT 的签名回复，重连查询原回执，
-并验证无重启。需要既有实机授权、停止常驻推图和人工确认画面。测试不改宿主、不自动激活应用。
+并验证无重启。`app-image-lifecycle` 运行 `TestHardwareAppImageLifecycle`，要求已确认的 ABI 2
+`color-test`，验证部分收图时切出释放、服务消失、旧代次读写拒绝及切回恢复。
+需要既有实机授权、停止常驻推图和人工确认画面。测试不改宿主、不自动激活应用。
 
 macOS 恢复服务前保留 `FRAME_THEME=mint-skin`、
 `DISPLAY_PROVIDERS=claude:CLAUDE,codex:CODEX,xai:GROK`、`REFRESH_INTERVAL=15m` 和 `TZ=Asia/Shanghai`。

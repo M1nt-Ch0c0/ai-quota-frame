@@ -3,10 +3,12 @@
 package ble
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"os"
 	"sync/atomic"
@@ -285,6 +287,138 @@ func TestHardwareAppImageDisplay(t *testing.T) {
 		if after.UptimeMS < before.UptimeMS || after.ResetReason != before.ResetReason || after.Version != before.Version || !after.RuntimeReady {
 			return errors.New("device reset or app changed during display")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Requires an already-confirmed ABI 2 color-test. Switches out with a partial
+// receive, proves the old service/target is gone, then restores photoframe.
+func TestHardwareAppImageLifecycle(t *testing.T) {
+	if os.Getenv("PHOTOFRAME_HARDWARE_TEST") != "app-image-lifecycle" {
+		t.Skip("explicit app-image-lifecycle opt-in required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	defer cancel()
+	id, token := os.Getenv("PHOTOFRAME_DEVICE_ID"), os.Getenv("PHOTOFRAME_PUSH_TOKEN")
+	var target []byte
+	var before hardwareState
+	err := WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+		if err := hwAppOffline(c); err != nil {
+			return err
+		}
+		var err error
+		before, err = hwStatus(ctx, c)
+		if err != nil {
+			return err
+		}
+		hwMemory(t, "app-before-switch", before)
+		target, err = c.imageTarget(ctx, "photoframe")
+		if err != nil {
+			return err
+		}
+		_, r, err := hwAppBegin(ctx, c, target, []byte("partial!"), MaxImageSize)
+		if err != nil {
+			return err
+		}
+		if r.state != appImageReceiving {
+			return errors.New("switch reservation failed")
+		}
+		app, _ := encodeApp("color-test")
+		_, err = c.appImageCommand(ctx, OpSwitch, app)
+		var code DeviceError
+		if errors.As(err, &code) {
+			return err
+		}
+		// A service database change may lose this reply. Never repeat SWITCH.
+		if err != nil {
+			t.Log("SWITCH reply lost; next connection will verify state without repeating mutation")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+		if err := hwAppOffline(c); err != nil {
+			return err
+		}
+		state, err := hwStatus(ctx, c)
+		if err != nil {
+			return err
+		}
+		hwMemory(t, "app-switched-out", state)
+		var catalog struct {
+			ABI   uint32 `json:"payload_abi"`
+			Count uint32 `json:"ble_characteristics"`
+		}
+		p, err := c.Status(ctx)
+		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal(p, &catalog); err != nil {
+			return err
+		}
+		found := false
+		for _, app := range state.Apps {
+			if app.ID == "color-test" && app.Bank == state.Loaded {
+				found = true
+			}
+		}
+		if !found || !state.RuntimeReady || catalog.ABI != 2 || catalog.Count != 0 {
+			return errors.New("confirmed ABI 2 color-test is not running without photoframe service")
+		}
+		if state.FreePSRAM+65536 < before.FreePSRAM {
+			return errors.New("STOP did not release app receive buffer")
+		}
+		if _, err = c.imageTarget(ctx, "photoframe"); !errors.Is(err, ErrAppImageUnavailable) {
+			return errors.New("photoframe service still available after switch")
+		}
+		if _, err = c.appImageCommand(ctx, OpAppRead, target); hwExpect(err, 8) != nil {
+			return errors.New("old generation read was not rejected")
+		}
+		var oldID [16]byte
+		oldID[0] = 1
+		stale := append(append([]byte{}, target...), appImageWire(appImageQuery, oldID, nil)...)
+		if _, err = c.appImageCommand(ctx, OpAppWrite, stale); hwExpect(err, 8) != nil {
+			return errors.New("old generation write was not rejected")
+		}
+		app, _ := encodeApp("photoframe")
+		_, err = c.appImageCommand(ctx, OpSwitch, app)
+		var code DeviceError
+		if errors.As(err, &code) {
+			return err
+		}
+		if err != nil {
+			t.Log("restore reply lost; next connection will verify without repeating SWITCH")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+		if err := hwAppOffline(c); err != nil {
+			return err
+		}
+		restored, err := c.imageTarget(ctx, "photoframe")
+		if err != nil {
+			return err
+		}
+		if bytes.Equal(restored, target) {
+			return errors.New("switch did not invalidate generation/revision")
+		}
+		after, err := hwStatus(ctx, c)
+		if err != nil {
+			return err
+		}
+		hwMemory(t, "app-restored", after)
+		if after.Version != before.Version || after.UptimeMS < before.UptimeMS || after.ResetReason != before.ResetReason {
+			return errors.New("app version changed or device reset")
+		}
+		t.Log("STOP freed receive memory; service absent and old read/write targets rejected; photoframe restored")
 		return nil
 	})
 	if err != nil {
