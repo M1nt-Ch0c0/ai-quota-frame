@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"image"
 	"image/png"
 	"io/fs"
 	"net/url"
@@ -93,11 +94,11 @@ func (renderer *Renderer) Render(snapshot quota.Snapshot) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	payload, err := screenshotHTML(html)
+	raster, err := screenshotHTML(html)
 	if err != nil {
 		return nil, err
 	}
-	quantized, err := QuantizeTheoreticalE6(payload)
+	quantized, err := quantizePNGWithDitherRegions(raster.png, TheoreticalE6Palette, raster.ditherRegions)
 	if err != nil {
 		return nil, fmt.Errorf("quantize dashboard PNG: %w", err)
 	}
@@ -169,16 +170,21 @@ func inlineStylesheet(html string, paths ...string) (string, error) {
 	return strings.Replace(html, linked, inlined, 1), nil
 }
 
-func screenshotHTML(html string) ([]byte, error) {
+type frameRaster struct {
+	png           []byte
+	ditherRegions []image.Rectangle
+}
+
+func screenshotHTML(html string) (frameRaster, error) {
 	workDir, err := os.MkdirTemp("", "ai-quota-frame-dashboard-*")
 	if err != nil {
-		return nil, fmt.Errorf("create dashboard temp dir: %w", err)
+		return frameRaster{}, fmt.Errorf("create dashboard temp dir: %w", err)
 	}
 	defer os.RemoveAll(workDir)
 
 	pagePath := filepath.Join(workDir, "frame.html")
 	if err := os.WriteFile(pagePath, []byte(html), 0600); err != nil {
-		return nil, fmt.Errorf("write dashboard html: %w", err)
+		return frameRaster{}, fmt.Errorf("write dashboard html: %w", err)
 	}
 
 	allocatorOptions := chromedp.DefaultExecAllocatorOptions[:]
@@ -212,18 +218,27 @@ func screenshotHTML(html string) ([]byte, error) {
 
 	fileURL := localFileURL(pagePath)
 	var pngBytes []byte
+	var artworkBounds []struct{ Left, Top, Right, Bottom int }
 	if err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(int64(Width), int64(Height), chromedp.EmulateScale(1)),
 		chromedp.Navigate(fileURL),
+		chromedp.Evaluate(`Array.from(document.querySelectorAll("svg.provider-logo, [data-dither]"), artwork => {
+          const r = artwork.getBoundingClientRect();
+          return {left: Math.floor(r.left), top: Math.floor(r.top), right: Math.ceil(r.right), bottom: Math.ceil(r.bottom)};
+        })`, &artworkBounds),
 		chromedp.CaptureScreenshot(&pngBytes),
 	); err != nil {
-		return nil, fmt.Errorf("render dashboard png: %w", err)
+		return frameRaster{}, fmt.Errorf("render dashboard png: %w", err)
 	}
 
 	if _, err := png.Decode(bytes.NewReader(pngBytes)); err != nil {
-		return nil, fmt.Errorf("dashboard png invalid: %w", err)
+		return frameRaster{}, fmt.Errorf("dashboard png invalid: %w", err)
 	}
-	return pngBytes, nil
+	raster := frameRaster{png: pngBytes}
+	for _, bounds := range artworkBounds {
+		raster.ditherRegions = append(raster.ditherRegions, image.Rect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom))
+	}
+	return raster, nil
 }
 
 // closeBrowser asks Chrome to exit gracefully, then kills whatever is left in

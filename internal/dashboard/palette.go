@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 )
 
 // RGB is one color in an e-paper output palette.
@@ -73,6 +74,13 @@ func QuantizeTheoreticalE6(input []byte) ([]byte, error) {
 }
 
 func quantizePNG(input []byte, palette E6Palette) ([]byte, error) {
+	return quantizePNGWithDitherRegions(input, palette, nil)
+}
+
+// quantizePNGWithDitherRegions preserves the normal crisp quantization outside
+// the selected artwork. Only those regions mix output inks to approximate the
+// source RGB colors; the finished PNG still contains exactly the device inks.
+func quantizePNGWithDitherRegions(input []byte, palette E6Palette, regions []image.Rectangle) ([]byte, error) {
 	if err := palette.Validate(); err != nil {
 		return nil, err
 	}
@@ -97,11 +105,97 @@ func quantizePNG(input []byte, palette E6Palette) ([]byte, error) {
 		}
 	}
 
+	for _, region := range regions {
+		ditherRegion(source, output, region.Intersect(output.Bounds()), palette)
+	}
+
 	var encoded bytes.Buffer
 	if err := png.Encode(&encoded, output); err != nil {
 		return nil, fmt.Errorf("encode theoretical E6 dashboard PNG: %w", err)
 	}
 	return encoded.Bytes(), nil
+}
+
+// ditherRegion uses serpentine Floyd-Steinberg error diffusion in linear RGB.
+// Ink coverage mixes reflected light, not gamma-encoded sRGB channel values;
+// diffusing encoded values would make the small marks much too bright.
+// Exact palette pixels are locked to keep backgrounds and ink patterns clean.
+func ditherRegion(source image.Image, output *image.NRGBA, region image.Rectangle, palette E6Palette) {
+	if region.Empty() {
+		return
+	}
+	width, height := region.Dx(), region.Dy()
+	work := make([][3]float64, width*height)
+	active := make([]bool, len(work))
+	entries := palette.entries()
+	var linearInks [6][3]float64
+	inks := make(map[RGB]bool, 6)
+	for index, entry := range entries {
+		inks[entry.color] = true
+		linearInks[index] = linearRGB(entry.color)
+	}
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			pixel := color.NRGBAModel.Convert(source.At(source.Bounds().Min.X+region.Min.X+x, source.Bounds().Min.Y+region.Min.Y+y)).(color.NRGBA)
+			rgb := compositeOver(pixel, palette.White)
+			index := y*width + x
+			active[index] = !inks[rgb]
+			work[index] = linearRGB(rgb)
+		}
+	}
+	for y := 0; y < height; y++ {
+		for step := 0; step < width; step++ {
+			x, direction := step, 1
+			if y%2 != 0 {
+				x, direction = width-1-step, -1
+			}
+			index := y*width + x
+			if !active[index] {
+				continue
+			}
+			old := work[index]
+			nearest, distance := 0, math.Inf(1)
+			for candidate, ink := range linearInks {
+				var squared float64
+				for channel := range old {
+					delta := min(1, max(0, old[channel])) - ink[channel]
+					squared += delta * delta
+				}
+				if squared < distance {
+					nearest, distance = candidate, squared
+				}
+			}
+			ink := entries[nearest].color
+			output.SetNRGBA(region.Min.X+x, region.Min.Y+y, color.NRGBA{R: ink.R, G: ink.G, B: ink.B, A: 255})
+			diff := [3]float64{old[0] - linearInks[nearest][0], old[1] - linearInks[nearest][1], old[2] - linearInks[nearest][2]}
+			spread := func(dx, dy int, weight float64) {
+				nx, ny := x+dx*direction, y+dy
+				if nx < 0 || nx >= width || ny >= height || !active[ny*width+nx] {
+					return
+				}
+				for channel := range diff {
+					work[ny*width+nx][channel] += diff[channel] * weight
+				}
+			}
+			spread(1, 0, 7.0/16)
+			spread(-1, 1, 3.0/16)
+			spread(0, 1, 5.0/16)
+			spread(1, 1, 1.0/16)
+		}
+	}
+}
+
+func linearRGB(rgb RGB) [3]float64 {
+	var result [3]float64
+	for index, value := range []uint8{rgb.R, rgb.G, rgb.B} {
+		v := float64(value) / 255
+		if v <= 0.04045 {
+			result[index] = v / 12.92
+		} else {
+			result[index] = math.Pow((v+0.055)/1.055, 2.4)
+		}
+	}
+	return result
 }
 
 func compositeOver(foreground color.NRGBA, background RGB) RGB {

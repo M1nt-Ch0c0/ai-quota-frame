@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"testing"
 )
 
@@ -109,6 +110,91 @@ func TestE6PaletteRejectsDuplicateColors(t *testing.T) {
 	invalid.Green = invalid.Blue
 	if err := invalid.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want duplicate-color error")
+	}
+}
+
+func TestDitherRegionsApproximateBrandColorsWithoutChangingTextOrInkPixels(t *testing.T) {
+	for name, target := range map[string]color.NRGBA{
+		"Claude terracotta": {R: 217, G: 119, B: 87, A: 255},
+		"ChatGPT teal":      {R: 16, G: 163, B: 127, A: 255},
+		"antialiased grey":  {R: 128, G: 128, B: 128, A: 255},
+	} {
+		t.Run(name, func(t *testing.T) {
+			source := image.NewNRGBA(image.Rect(0, 0, 96, 80))
+			region := image.Rect(16, 16, 80, 64)
+			for y := 0; y < 80; y++ {
+				for x := 0; x < 96; x++ {
+					pixel := color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+					if image.Pt(x, y).In(region) {
+						pixel = target
+					}
+					// Lock a white/black rule through the artwork, plus grey
+					// text outside it that must keep the original quantization.
+					if y == 40 {
+						pixel = color.NRGBA{A: 255}
+						if x%2 == 0 {
+							pixel = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+						}
+					}
+					if y == 8 {
+						pixel = color.NRGBA{R: 128, G: 128, B: 128, A: 255}
+					}
+					source.SetNRGBA(x, y, pixel)
+				}
+			}
+			input := encodeTestPNG(t, source)
+			plainPNG, err := QuantizeTheoreticalE6(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := quantizePNGWithDitherRegions(input, TheoreticalE6Palette, []image.Rectangle{region})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertPhotoframePNGHeader(t, result, 96, 80)
+			plain, _ := png.Decode(bytes.NewReader(plainPNG))
+			decoded, err := png.Decode(bytes.NewReader(result))
+			if err != nil {
+				t.Fatal(err)
+			}
+			allowed, seen := theoreticalColorSet(), map[RGB]bool{}
+			var sum [3]float64
+			count := 0.0
+			for y := 0; y < 80; y++ {
+				for x := 0; x < 96; x++ {
+					pixel := color.NRGBAModel.Convert(decoded.At(x, y)).(color.NRGBA)
+					ink := RGB{pixel.R, pixel.G, pixel.B}
+					if pixel.A != 255 || !allowed[ink] {
+						t.Fatalf("pixel (%d,%d) violates the six-ink contract: %v", x, y, pixel)
+					}
+					if !image.Pt(x, y).In(region) || y == 40 {
+						if want := color.NRGBAModel.Convert(plain.At(x, y)); pixel != want {
+							t.Fatalf("dithering changed text, background, or an exact ink at (%d,%d)", x, y)
+						}
+						continue
+					}
+					seen[ink] = true
+					sum[0] += float64(pixel.R)
+					sum[1] += float64(pixel.G)
+					sum[2] += float64(pixel.B)
+					count++
+				}
+			}
+			if len(seen) < 2 {
+				t.Fatal("brand color was replaced with a single ink instead of dithered")
+			}
+			// Pure device inks are 0 or 1 in linear light. Their coverage
+			// must approximate the source reflectance, not its sRGB bytes.
+			for channel, want := range linearRGB(RGB{target.R, target.G, target.B}) {
+				if mean := sum[channel] / (255 * count); math.Abs(mean-want) > 0.025 {
+					t.Errorf("mean linear channel %d = %.3f, want within 0.025 of %.3f", channel, mean, want)
+				}
+			}
+			second, err := quantizePNGWithDitherRegions(input, TheoreticalE6Palette, []image.Rectangle{region})
+			if err != nil || !bytes.Equal(result, second) {
+				t.Fatal("identical artwork must produce identical PNGs for frame deduplication")
+			}
+		})
 	}
 }
 

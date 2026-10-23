@@ -29,14 +29,24 @@
         </div>
       </div>
       <div class="row-body">
-        {{range $row.Windows}}
+        {{range $windowIndex, $window := $row.Windows}}
         <div class="window">
           <div class="window-head">
             <span class="window-label">{{.Label}}</span>
             <span class="window-value"><span class="window-percent percent-{{.PercentClass}}">{{.PercentText}}</span> <span class="window-left">left</span></span>
           </div>
-          <div class="bar" aria-hidden="true">
-            {{range .Segments}}<span class="cell"><span class="cell-fill" style="width: {{.FillWidth}}%;"></span></span>{{end}}
+          <div class="heart-meter" aria-hidden="true">
+            <span class="hp-label">HP</span>
+            <span class="heart-track">
+              {{range $heartIndex, $segment := .Segments}}
+              <svg width="16" height="14" viewBox="0 0 16 14" data-dither shape-rendering="crispEdges">
+                <defs><clipPath id="heart-{{$row.Slot}}-{{$windowIndex}}-{{$heartIndex}}"><rect width="{{$segment.FillWidth}}%" height="14"/></clipPath></defs>
+                <path d="M2 1H6V3H10V1H14V3H16V7H14V9H12V11H10V13H6V11H4V9H2V7H0V3H2Z" fill="#fff"/>
+                <path d="M2 1H6V3H10V1H14V3H16V7H14V9H12V11H10V13H6V11H4V9H2V7H0V3H2Z" fill="#ba5968" clip-path="url(#heart-{{$row.Slot}}-{{$windowIndex}}-{{$heartIndex}})"/>
+                <path d="M2 1H6V3H10V1H14V3H16V7H14V9H12V11H10V13H6V11H4V9H2V7H0V3H2Z" fill="none" stroke="#000" stroke-width="1"/>
+              </svg>
+              {{end}}
+            </span>
           </div>
           <div class="window-reset">{{.ResetText}}</div>
         </div>
@@ -59,15 +69,7 @@
       {{if .Usage}}
       <div class="usage-chart">
         <div class="usage-title">7-day token usage</div>
-        <div class="usage-bars">
-          {{range .Usage.Days}}
-          <div class="usage-day{{if .Peak}} peak{{end}}">
-            <span class="usage-value">{{.Value}}</span>
-            <div class="usage-slot"><span class="usage-bar" style="height: {{.Height}}%;"></span></div>
-            <span class="usage-date">{{.Label}}</span>
-          </div>
-          {{end}}
-        </div>
+        {{.Usage.City}}
       </div>
       <div class="usage-stats">
         {{with .Usage.Today}}<div class="stat"><span class="stat-tag">TODAY</span><span class="stat-tokens">{{.Tokens}}<small> tok</small></span><span class="stat-cost">{{.Cost}}</span></div>{{end}}

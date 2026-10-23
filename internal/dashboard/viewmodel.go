@@ -54,6 +54,7 @@ type barSegmentData struct {
 
 type usageData struct {
 	Days     []usageDayData
+	City     template.HTML
 	Today    usageMetricData
 	SevenDay usageMetricData
 	Peak     usageMetricData
@@ -333,6 +334,7 @@ func buildUsageData(usage *quota.Usage) *usageData {
 
 	return &usageData{
 		Days: chartDays,
+		City: cityChartSVG(chartDays),
 		Today: usageMetricData{
 			Label:  "TODAY",
 			Tokens: formatTokens(usage.TodayTokens),
