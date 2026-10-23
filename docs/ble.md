@@ -1,5 +1,10 @@
 # BLE discovery, images and application packages
 
+**Route:** BLE images use photoframe's ABI 2.1 application service. The old
+host PNG sender remains a compatibility implementation and regression baseline.
+Discovery/auth/app OTA stay in the host. See the [application protocol](https://github.com/M1nt-Ch0c0/photoframe/blob/main/docs/ble-image-input.md)
+and [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md).
+
 The host firmware must include the resident PhotoPainter BLE v1 service. BLE
 finds the device by its stable ID, pushes PNG images and installs applications
 without an IP route. Set `PHOTOFRAME_PUSH_TRANSPORT=ble` for a device path that
@@ -16,8 +21,8 @@ ai-quota-frame ble scan
 
 Scan results are untrusted discovery metadata. Configure `PHOTOFRAME_DEVICE_ID`
 in the service's process environment, alongside its existing independent
-`PHOTOFRAME_PUSH_TOKEN`. BLE image mode requires an ID or saved binding and a host
-supporting the image extension. It never uses `PHOTOFRAME_PUSH_URL`, discovers an
+`PHOTOFRAME_PUSH_TOKEN`. BLE image mode requires an ID or saved binding, a compatible host and the
+selected photoframe ABI 2.1 application. It never uses `PHOTOFRAME_PUSH_URL`, discovers an
 IP target, or falls back to HTTP. In HTTP mode, `PHOTOFRAME_PUSH_URL` becomes an
 optional initial/fallback address when a device ID is configured. Without an ID
 the existing HTTP-only configuration continues to work. Do not pass tokens in command-line arguments.
@@ -105,7 +110,7 @@ The BLE link is not encrypted. The token is never transmitted, and nonces,
 direction-specific HMACs and monotonic sequence numbers protect commands and
 responses from modification and replay. Images, packages and status remain observable.
 Use a strong random device token; do not reuse quota/management/OAuth secrets.
-See the host's [wire protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/codex/ble-image-push/docs/ble-protocol.md).
+See the host's [wire protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/docs/ble-protocol.md).
 
 ## Image completion and recovery
 

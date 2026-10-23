@@ -1,14 +1,18 @@
 # AI quota frame agent guide
 
+**Source and documentation baseline:** main includes the resident BLE/ABI 2.1 framework, photoframe-owned image reception and its desktop client. See the [version/status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md) for source commits and remaining hardware acceptance limits.
+
 Read this file before changing the PC-side service. For blank-machine setup, cross-repository integration, deployment, or hardware diagnosis, also read the complete project Skill in the sibling host checkout: `../photopainter-host/.agents/skills/develop-photopainter-stack/SKILL.md`.
 
 ## Repository role
 
-This repository owns quota collection, optional usage collection, snapshot freshness, Chrome-based rendering, strict six-color PNG production, latest-frame queueing, and active pushes to the PhotoPainter. It does not own device firmware, ELF loading, E6 timing, Wi-Fi provisioning, or an inbound service.
+This repository owns quota collection, optional usage collection, snapshot freshness, Chrome-based rendering, strict six-color PNG production, latest-frame queueing, and active pushes to the PhotoPainter. It does not own device firmware, ELF loading, E6 timing, Wi-Fi provisioning, or an inbound network service. The macOS console uses a filesystem-protected Unix socket and the same serialized BLE queue.
+
+See the [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md) for framework/app boundaries. BLE image sending uses the photoframe ABI 2.1 application service, keeping discovery/auth/OTA generic. The older host-specific transport remains as a compatibility implementation and regression baseline. Keep app business protocol descriptions with the app, and client invocation/deployment here.
 
 ## Non-negotiable constraints
 
-- Keep the process outbound-only. Do not restore the retired `:8787` listener or add a WebUI, album, OTA, Home Assistant, or device-pull flow.
+- Keep network traffic outbound-only; local console IPC may use the protected Unix socket. Do not restore the retired `:8787` listener or add a WebUI, album, OTA, Home Assistant, or device-pull flow.
 - Render exactly 800×480 non-interlaced PNG with only opaque black, white, yellow, red, blue, and green pixels.
 - HTTP sends raw `image/png` to `/api/push` with the independent device token. Explicit BLE mode sends authenticated PNG chunks without an IP request or HTTP fallback. Never send management, OAuth, CPAMP, or Wi-Fi secrets to the device.
 - Do not use environment proxies or follow redirects for device pushes.

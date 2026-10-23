@@ -1,8 +1,14 @@
 # AI Quota Frame
 
+**源码状态：main 已包含 APP BLE 图片发送器和 macOS 控制台。** BLE 发送使用 photoframe ABI 2.1 服务；控制台通过本机 Unix socket 与后台共用串行队列。构建与使用见 [控制台说明](apps/console/README.md)，验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md)。
+
 > **AI / 开发者入口：**先阅读 [`AGENTS.md`](AGENTS.md)。空白电脑部署、三仓联调和真机诊断使用 [`develop-photopainter-stack`](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/.agents/skills/develop-photopainter-stack/SKILL.md)。
 
 四个仓库的职责、架构图、耦合边界与修改影响，见 [PhotoPainter 架构总览](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/ARCHITECTURE.md)。
+
+**开发规范见 [PhotoPainter Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md)。** 本仓库负责采集、渲染、发送和主机部署；应用安装能力由设备宿主提供，本程序是其客户端。
+
+BLE 图片主路径访问 photoframe ABI 2.1 的 APP 收图服务，应用必须已被选中；不自动切换应用，也不回退 HTTP。旧宿主 PNG 通道实现与回归测试保留。常驻发现、鉴权和应用 OTA 继续由宿主提供。
 
 `ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并通过 HTTP 或 BLE 主动推送到 ESP32-S3 PhotoPainter。BLE 模式下，设备发现、推图和应用更新均不需要相框连接 Wi-Fi；电脑采集额度仍需要互联网。设备不轮询主机，不使用相册、WebUI、宿主整机 OTA、Home Assistant 或深睡眠流程。
 

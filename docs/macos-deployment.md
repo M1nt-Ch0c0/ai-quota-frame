@@ -54,7 +54,7 @@ BLE 宿主增加 1184 字节，静态 DIRAM 增加 384 字节。
   一次凭据查询，没有重复刷新，设备没有重启。
 
 完整命令语义、内存采样和范围见宿主的
-[离线 BLE 图片验收记录](https://github.com/M1nt-Ch0c0/photopainter-host/blob/codex/ble-image-push/docs/validation-ble-images.md)。
+[离线 BLE 图片验收记录](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/docs/validation-ble-images.md)。
 测试预约了最大接收内存，但没有声称完整传输了 5 MiB 图片或完成长期耐久测试。
 
 ## 显示配置迁移纠正
