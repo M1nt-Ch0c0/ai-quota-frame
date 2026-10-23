@@ -294,6 +294,26 @@ func TestHardwareAppImageDisplay(t *testing.T) {
 	}
 }
 
+// Retry connection/authentication setup after a dynamic GATT change. Once the
+// callback starts, return its result unchanged: it may have sent a mutation.
+func hwAppWithConnection(t *testing.T, ctx context.Context, id, token string, job func(context.Context, *Client) error) error {
+	t.Helper()
+	for attempt := 0; ; attempt++ {
+		started := false
+		err := WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+			started = true
+			return job(ctx, c)
+		})
+		if started || err == nil || attempt == 2 || errors.Is(err, ErrAuthentication) || ctx.Err() != nil {
+			return err
+		}
+		t.Logf("connection setup unavailable; reconnecting before any application command (attempt %d/3)", attempt+2)
+		if err := wait(ctx, 2*time.Second); err != nil {
+			return err
+		}
+	}
+}
+
 // Requires an already-confirmed ABI 2 color-test. Switches out with a partial
 // receive, proves the old service/target is gone, then restores photoframe.
 func TestHardwareAppImageLifecycle(t *testing.T) {
@@ -305,7 +325,7 @@ func TestHardwareAppImageLifecycle(t *testing.T) {
 	id, token := os.Getenv("PHOTOFRAME_DEVICE_ID"), os.Getenv("PHOTOFRAME_PUSH_TOKEN")
 	var target []byte
 	var before hardwareState
-	err := WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+	err := hwAppWithConnection(t, ctx, id, token, func(ctx context.Context, c *Client) error {
 		if err := hwAppOffline(c); err != nil {
 			return err
 		}
@@ -341,7 +361,7 @@ func TestHardwareAppImageLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+	err = hwAppWithConnection(t, ctx, id, token, func(ctx context.Context, c *Client) error {
 		if err := hwAppOffline(c); err != nil {
 			return err
 		}
@@ -399,7 +419,7 @@ func TestHardwareAppImageLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = WithClient(ctx, id, token, func(ctx context.Context, c *Client) error {
+	err = hwAppWithConnection(t, ctx, id, token, func(ctx context.Context, c *Client) error {
 		if err := hwAppOffline(c); err != nil {
 			return err
 		}
