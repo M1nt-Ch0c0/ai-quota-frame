@@ -1,10 +1,16 @@
 # AI Quota Frame
 
+**文档发布说明：本次 main 仅更新文档。** 公开 BLE 客户端基线为 `0e94fab`，见 [`codex/ble-image-push`](https://github.com/M1nt-Ch0c0/ai-quota-frame/tree/codex/ble-image-push)；Mac 的 APP 服务发送器已在本地功能分支实现，但尚未推送。使用 BLE 配置前先核对所运行程序，不能把旧 main 二进制当作支持这些选项。
+
 > **AI / 开发者入口：**先阅读 [`AGENTS.md`](AGENTS.md)。空白电脑部署、三仓联调和真机诊断使用 [`develop-photopainter-stack`](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/.agents/skills/develop-photopainter-stack/SKILL.md)。
 
 四个仓库的职责、架构图、耦合边界与修改影响，见 [PhotoPainter 架构总览](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/ARCHITECTURE.md)。
 
-`ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并主动 `POST` 原始 PNG 到常亮的 ESP32-S3 PhotoPainter。设备不再轮询主机，也不使用相册、WebUI、OTA、Home Assistant 或深睡眠流程。
+**开发规范见 [PhotoPainter Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md)。** 本仓库负责采集、渲染、发送和主机部署；应用安装能力由设备宿主提供，本程序是其客户端。
+
+当前 `0e94fab` 的 BLE 图片发送器使用已验证的宿主专用 PNG 通道。2026-10-23 已批准改为访问 photoframe ABI 2.1 的 APP 收图服务，正由独立功能分支开发；本文保留旧实现使用说明，不能当作新 APP 路线已完成。框架文档分支 `codex/framework-wiki` 不修改客户端实现或运行服务。
+
+`ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并通过 HTTP 或 BLE 主动推送到 ESP32-S3 PhotoPainter。BLE 模式下，设备发现、推图和应用更新均不需要相框连接 Wi-Fi；电脑采集额度仍需要互联网。设备不轮询主机，不使用相册、WebUI、宿主整机 OTA、Home Assistant 或深睡眠流程。
 
 ## 刷写
 
@@ -43,13 +49,13 @@ set +a
 ./dist/ai-quota-frame
 ```
 
-每次成功的额度刷新都会交给单工作线程处理；队列只保留最新快照。主机生成的图片必须不超过 5 MiB，并以 `Content-Type: image/png` 和独立 Bearer 码发送到完整的 `/api/push` URL。客户端不使用环境代理、不跟随 HTTP 重定向，且只有设备返回 `200` 才记为刷屏完成。
+每次成功的额度刷新都会交给单工作线程处理；队列只保留最新快照。主机生成的图片必须不超过 5 MiB。默认 HTTP 模式以 `Content-Type: image/png` 和独立 Bearer 码发送到完整的 `/api/push` URL，不使用环境代理、不跟随 HTTP 重定向，只有设备返回 `200` 才记为刷屏完成。纯 BLE 配置及完成凭据见下文。
 
 刷新失败会立即作废待推送的旧 LIVE 帧，并尽力取消尚未完成的旧请求；失败快照不会推到设备。单次 HTTP 总超时为 11 分钟，覆盖一次刷屏中最多五个串行的 120 秒 BUSY 等待，避免设备已刷完但客户端过早超时后重复刷屏。网络错误、`408`、`409`、`423`、`425`、`429` 和 `5xx` 可以重试，期间仍只保留最新成功快照。渲染错误不进入定时重算，只等下一次成功额度刷新；其他非 `200` 状态（包括 `401`、`413`、`422` 和重定向）会永久拒绝当前 PNG 摘要，图片内容变化后才允许再次尝试。
 
 ## 鉴权
 
-`PHOTOFRAME_PUSH_TOKEN` 只用于设备的 `POST /api/push`，须为 32–128 个无空白可打印 ASCII 字节。启动校验会拒绝它与以下任何已配置密钥相同：
+`PHOTOFRAME_PUSH_TOKEN` 只用于设备的 HTTP/BLE 鉴权，须为 32–128 个无空白可打印 ASCII 字节。BLE 使用双向 HMAC 挑战响应，令牌不通过蓝牙发送。启动校验会拒绝它与以下任何已配置密钥相同：
 
 - `CLIPROXY_MANAGEMENT_KEY`
 - `CPAMP_ADMIN_KEY`
@@ -60,9 +66,27 @@ set +a
 
 不要提交 `.env`、设备密钥、Flash/SD 备份或含密钥的命令输出。相框只应位于受信局域网，禁止把设备的 HTTP 端口映射到公网。
 
+## BLE 发现、推图与应用安装
+
+相框宿主支持 BLE 图片扩展后，配置：
+
+```dotenv
+PHOTOFRAME_PUSH_TRANSPORT=ble
+PHOTOFRAME_DEVICE_ID=001122334455
+PHOTOFRAME_PUSH_TOKEN=replace-with-generated-token
+```
+
+将示例 ID 替换为 `ai-quota-frame ble scan` 查到的设备 ID，令牌使用设备已有的独立令牌。也可以用 `ble bind` 把公开 ID 保存到独立状态文件。BLE 模式不需要 `PHOTOFRAME_PUSH_URL`，不会访问设备 IP 或回退 HTTP；不会改写用户 `.env`。
+
+图片分块传输并校验 SHA-256，由同一个 App Manager 交给当前相框应用。只有经过鉴权的完成凭据确认实体刷新和最终 POWER_OFF 后才算成功。完成回复丢失时只查询原请求的凭据，不重复刷屏；设备重启或凭据丢失时停止该图片的自动重试。凭据保存在 RAM，不保证跨进程重启的去重。链路没有加密，图片和应用包内容可被近距离监听，令牌不会明文传输。
+
+`ble push --file frame.png` 可单次推图，`ble install --file module.pkg` 暂存应用包，`ble activate --app APP_ID` 显式试运行。保留 `PHOTOFRAME_PUSH_TRANSPORT=http` 时，BLE 只负责发现新 IP，HTTP 推图仍要求地址可达。命令、平台要求和安全边界见 [BLE 指南](docs/ble.md)。
+
 ## macOS 常驻运行
 
-先配置忽略的 `.env` 并执行 `make check`，再运行：
+原生构建、网关配置和离线 BLE 实机结果见 [macOS 部署记录](docs/macos-deployment.md)。
+
+先配置忽略的 `.env` 并执行 `GOTOOLCHAIN=go1.26.0 make check`，再运行：
 
 ```sh
 python3 deploy/install-macos.py --env-file .env
@@ -70,9 +94,19 @@ python3 deploy/install-macos.py --env-file .env
 
 首次调试尚未取得实体刷屏成功时，使用 `--no-start` 只安装并禁用自动启动；确认刷屏成功后重新运行不带该参数的安装命令。
 
-安装器使用 Xcode Command Line Tools 编译本地启动器，在 `~/Applications/PhotoPainter Renderer.app` 建立应用身份，并更新用户级 `com.m1ntch0c0.ai-quota-frame` LaunchAgent，登录自动启动，异常退出后重启。应用声明 `NSLocalNetworkUsageDescription`，LaunchAgent 通过 `AssociatedBundleIdentifiers` 关联应用，遵循 [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)。首次出现本地网络提示时允许其访问相框；若出现 `no route to host`，同时检查实际 Wi-Fi 路由和“隐私与安全性 → 本地网络”，不能仅凭这个错误断定是权限问题。凭据只保存在权限 0600 的本地配置文件中。运行期间通过 `caffeinate` 阻止空闲休眠，日志位于 `~/Library/Logs/photopainter-render.log`。硬件诊断或模块升级前先 `launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame` 停止自动推图。
+macOS 的 `make build`/`make check` 默认启用 CGO，以编译 CoreBluetooth；需要本机 Xcode 工具链。`BUILD_CGO_ENABLED=0` 可显式构建仅 HTTP 的版本，但该版本不能执行 BLE 发现或应用安装。Linux/Windows 构建保持静态。
 
-远端管理接口通过 SSH loopback 转发连接，本机 28317、28318 分别转发至远端 8317、18317。先在本机 SSH 配置中建立 `photopainter-source` 别名，设置真实服务器、登录用户及已有密钥，并核验服务器主机指纹。确认无需交互认证：
+安装器使用 Xcode Command Line Tools 编译本地启动器，在 `~/Applications/PhotoPainter Renderer.app` 建立应用身份，并更新用户级 `com.m1ntch0c0.ai-quota-frame` LaunchAgent，登录自动启动，异常退出后重启。应用声明 `NSLocalNetworkUsageDescription` 和 `NSBluetoothAlwaysUsageDescription`，LaunchAgent 通过 `AssociatedBundleIdentifiers` 关联应用，遵循 [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)。首次出现本地网络或蓝牙提示时，在 Mac 图形界面允许该应用访问；SSH 本身不会代替用户授予系统隐私权限。若出现 `no route to host`，同时检查实际 Wi-Fi 路由和“隐私与安全性 → 本地网络”，不能仅凭这个错误断定是权限问题。凭据只保存在权限 0600 的本地配置文件中。运行期间通过 `caffeinate` 阻止空闲休眠，日志位于 `~/Library/Logs/photopainter-render.log`。硬件诊断或模块升级前先 `launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame` 停止自动推图。
+
+已安装的应用启动器也接受 BLE 命令，并私下加载同一份运行配置。例如通过应用身份发起首次绑定：
+
+```sh
+open -n -W "$HOME/Applications/PhotoPainter Renderer.app" --args ble bind --device-id 001122334455
+```
+
+启动器不会将令牌写入参数或应用包。迁移到另一台电脑时，先验证新机器的配置、蓝牙和网络；切换时停止旧机器的自动推图，避免两个服务同时刷新同一块屏幕。
+
+使用前述 Google ID Token 网关时，不需要源站 SSH 隧道。若采用已有的 SSH loopback 数据源部署，本机 28317、28318 可分别转发至远端 8317、18317。先在本机 SSH 配置中建立 `photopainter-source` 别名，设置真实服务器、登录用户及已有密钥，并核验服务器主机指纹。确认无需交互认证：
 
 ```sh
 ssh -o BatchMode=yes -o StrictHostKeyChecking=yes photopainter-source true
@@ -92,7 +126,7 @@ launchctl bootout gui/$(id -u)/com.m1ntch0c0.ai-quota-frame
 launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.m1ntch0c0.ai-quota-frame.plist"
 ```
 
-若曾用 `--no-start` 禁用服务，先 `launchctl enable gui/$(id -u)/com.m1ntch0c0.ai-quota-frame`，或重新运行安装器。正常日志 `photopainter-render.log` 中的 `frame pushed` 表示收到设备 HTTP 200；错误日志为同目录 `photopainter-render.error.log`，隧道日志使用 `photopainter-source-tunnel` 前缀。查看日志时注意保护管理端返回的敏感内容。停用并取消登录启动可执行 `launchctl disable` 后 `bootout`；二进制和凭据仍保留在本机运行目录。
+若曾用 `--no-start` 禁用服务，先 `launchctl enable gui/$(id -u)/com.m1ntch0c0.ai-quota-frame`，或重新运行安装器。正常日志 `photopainter-render.log` 中的 `frame pushed` 表示收到设备 HTTP 200 或 BLE 鉴权完成凭据；`last-frame.png` 也只在这时保存。错误日志为同目录 `photopainter-render.error.log`，隧道日志使用 `photopainter-source-tunnel` 前缀。查看日志时注意保护管理端返回的敏感内容。停用并取消登录启动可执行 `launchctl disable` 后 `bootout`；二进制和凭据仍保留在本机运行目录。
 
 只生成一张真实数据预览、不向设备推送：
 
