@@ -108,7 +108,7 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 			Slot:        len(rows) + 1,
 			Provider:    row.provider,
 			Detail:      row.detail,
-			Plan:        row.plan,
+			Plan:        displayPlan(row.plan),
 			Status:      strings.ToUpper(row.status),
 			StatusClass: rowStatusClass(row),
 			Stale:       row.stale,
@@ -135,6 +135,35 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 		data.FooterClass = "error"
 	}
 	return data
+}
+
+// displayPlan keeps subscription names readable in the fixed-width provider
+// column. Unknown or absent tiers are never inferred from the provider.
+func displayPlan(plan string) string {
+	switch strings.ToLower(strings.TrimSpace(plan)) {
+	case "supergrok heavy", "supergrok_heavy", "supergrokheavy", "heavy", "supergrokpro":
+		return "Heavy"
+	case "supergrok":
+		return "SuperGrok"
+	case "pro", "claude_pro":
+		return "Pro"
+	case "plus":
+		return "Plus"
+	case "max", "claude_max":
+		return "Max"
+	case "free":
+		return "Free"
+	case "team":
+		return "Team"
+	case "business":
+		return "Business"
+	case "enterprise":
+		return "Enterprise"
+	case "advanced":
+		return "Advanced"
+	default:
+		return compact(plan, 16)
+	}
 }
 
 // displayedErrors drops "provider: message" errors for account providers that

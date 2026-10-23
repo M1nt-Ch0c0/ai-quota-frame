@@ -54,6 +54,24 @@ type Pusher struct {
 	hasRejected  bool
 	activeID     uint64
 	activeCancel context.CancelFunc
+	paused       bool
+	observer     func(string)
+}
+
+// SetObserver is configured before Run. Events contain no source data/errors.
+func (pusher *Pusher) SetObserver(observer func(string)) { pusher.observer = observer }
+func (pusher *Pusher) observe(event string) {
+	if pusher.observer != nil {
+		pusher.observer(event)
+	}
+}
+
+// SetPaused preserves the latest snapshot and lets an admitted display finish.
+func (pusher *Pusher) SetPaused(paused bool) {
+	pusher.mu.Lock()
+	pusher.paused = paused
+	pusher.mu.Unlock()
+	pusher.signal()
 }
 
 type permanentPushError struct {
@@ -257,17 +275,20 @@ func (pusher *Pusher) run(ctx context.Context) {
 			}
 			if err == nil {
 				pusher.complete(queued.id, image.Digest)
+				pusher.observe("unchanged")
 				continue
 			}
 
 			var permanent *permanentPushError
 			if errors.As(err, &permanent) {
+				pusher.observe("rejected")
 				pusher.logger.Error("PhotoPainter frame push rejected; waiting for the next refresh", "error", err)
 				pusher.reject(queued.id, image.Digest)
 				continue
 			}
 
 			pusher.logger.Error("PhotoPainter frame push failed; retrying", "error", err)
+			pusher.observe("failed")
 			if !pusher.isCurrent(queued.id) {
 				continue
 			}
@@ -291,7 +312,7 @@ func (pusher *Pusher) drainWake() {
 func (pusher *Pusher) current() (queuedSnapshot, bool) {
 	pusher.mu.Lock()
 	defer pusher.mu.Unlock()
-	if pusher.pending == nil {
+	if pusher.pending == nil || pusher.paused {
 		return queuedSnapshot{}, false
 	}
 	return *pusher.pending, true
@@ -333,6 +354,7 @@ func (pusher *Pusher) reject(id uint64, digest [32]byte) {
 }
 
 func (pusher *Pusher) attempt(ctx context.Context, id uint64, snapshot quota.Snapshot) (frame.Image, bool, bool, bool, error) {
+	pusher.observe("rendering")
 	image, err := pusher.producer.Produce(snapshot)
 	if err != nil {
 		if !pusher.isCurrent(id) {
@@ -377,7 +399,7 @@ func (pusher *Pusher) wasRejected(digest [32]byte) bool {
 func (pusher *Pusher) postCurrent(ctx context.Context, id uint64, payload []byte) (bool, error) {
 	requestContext, cancel := context.WithCancel(ctx)
 	pusher.mu.Lock()
-	if pusher.pending == nil || pusher.pending.id != id {
+	if pusher.pending == nil || pusher.pending.id != id || pusher.paused {
 		pusher.mu.Unlock()
 		cancel()
 		return true, nil

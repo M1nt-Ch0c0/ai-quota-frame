@@ -247,6 +247,9 @@ func (client *Client) fetchAccount(ctx context.Context, entry map[string]any) qu
 	if plan != "" {
 		account.Plan = plan
 	}
+	if err == nil && account.Plan == "" {
+		account.Plan = client.fetchSubscriptionPlan(ctx, provider, authIndex, entry)
+	}
 	if err != nil {
 		fallback := passiveWindows(provider, entry, client.now(), client.passiveMaxAge)
 		if len(fallback) > 0 {

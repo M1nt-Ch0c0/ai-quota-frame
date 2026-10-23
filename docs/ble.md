@@ -1,9 +1,10 @@
-# BLE discovery and application packages
+# BLE discovery, images and application packages
 
 The host firmware must include the resident PhotoPainter BLE v1 service. BLE
-finds the device when its Wi-Fi address changes and can install applications
-without an IP route. **PNG pushes still use HTTP**: BLE does not bypass hotspot
-client isolation, provide a cross-subnet route, or carry images in this version.
+finds the device by its stable ID, pushes PNG images and installs applications
+without an IP route. Set `PHOTOFRAME_PUSH_TRANSPORT=ble` for a device path that
+does not require Wi-Fi. The default remains `http` for existing deployments.
+The computer still needs Internet access to collect quota data.
 
 ## Configuration
 
@@ -15,9 +16,11 @@ ai-quota-frame ble scan
 
 Scan results are untrusted discovery metadata. Configure `PHOTOFRAME_DEVICE_ID`
 in the service's process environment, alongside its existing independent
-`PHOTOFRAME_PUSH_TOKEN`. `PHOTOFRAME_PUSH_URL` becomes an optional initial/fallback
-address when a device ID is configured. Without an ID the existing HTTP-only
-configuration continues to work. Do not pass tokens in command-line arguments.
+`PHOTOFRAME_PUSH_TOKEN`. BLE image mode requires an ID or saved binding and a host
+supporting the image extension. It never uses `PHOTOFRAME_PUSH_URL`, discovers an
+IP target, or falls back to HTTP. In HTTP mode, `PHOTOFRAME_PUSH_URL` becomes an
+optional initial/fallback address when a device ID is configured. Without an ID
+the existing HTTP-only configuration continues to work. Do not pass tokens in command-line arguments.
 The program does not read, rewrite or save `.env`, and does not save a new IP to
 disk. Continue using the existing trusted launcher to load environment variables.
 
@@ -36,7 +39,7 @@ restart the service to apply. `PHOTOFRAME_BLE_BINDING_FILE` may override the pat
 with an absolute filename. This separate JSON never contains the token, IP or
 Wi-Fi credentials; a damaged record is rejected rather than silently replaced.
 
-At startup and after a push failure the serialized worker scans for that ID,
+In HTTP mode, at startup and after a push failure the serialized worker scans for that ID,
 connects and performs mutual HMAC authentication, then uses the **authenticated**
 private IPv4 record to update its in-memory `/api/push` target. A spoofed broadcast
 alone cannot redirect a Bearer-bearing request. Discovery is throttled to once
@@ -62,6 +65,7 @@ Stop the automatic pusher before deliberate activation/display validation.
 ```sh
 ai-quota-frame ble info --device-id 001122334455
 ai-quota-frame ble status --device-id 001122334455
+ai-quota-frame ble push --device-id 001122334455 --file frame.png --app photoframe
 ai-quota-frame ble inspect --file module.pkg
 ai-quota-frame ble install --device-id 001122334455 --file module.pkg
 ai-quota-frame ble activate --device-id 001122334455 --app photoframe
@@ -78,7 +82,7 @@ the envelope/hash; the host additionally validates ELF/manifest/imports.
 Install accepts at most 1 MiB, reports acknowledged upload progress on stderr,
 and **only stages a candidate**. Explicit activate requests trial/confirmation
 through the host's existing manager. An ABI 2 application confirms after a valid
-START and required first display; ABI 1 still requires its first valid HTTP PNG.
+START and required first display; ABI 1 still requires its first valid HTTP or BLE PNG.
 Successful staging is not a completed display or confirmed version.
 
 The transport supports MTU 23, up to 512-byte logical frames and 400-byte package
@@ -99,9 +103,32 @@ the mutation. An explicit device error such as busy is returned directly.
 
 The BLE link is not encrypted. The token is never transmitted, and nonces,
 direction-specific HMACs and monotonic sequence numbers protect commands and
-responses from modification and replay. Packages and status remain observable.
+responses from modification and replay. Images, packages and status remain observable.
 Use a strong random device token; do not reuse quota/management/OAuth secrets.
-See the host's [wire protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/codex/ble-discovery-app-ota/docs/ble-protocol.md).
+See the host's [wire protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/codex/ble-image-push/docs/ble-protocol.md).
+
+## Image completion and recovery
+
+`ble push` and the background BLE sender validate the complete PNG before radio
+work: at most 5 MiB, 800×480, non-interlaced, opaque exact six colors, valid CRCs
+and no trailing bytes. The host independently validates it through the same app
+decoder and `app_manager_render()` used by HTTP. The app must already be selected;
+an image does not switch applications. Existing ABI 1/2 PNG apps need no rebuild.
+
+The sender negotiates image capabilities, creates a random request ID and uploads
+authenticated chunks with a whole-image SHA-256. Only a signed completion result
+after physical refresh and final POWER_OFF counts as success. The service saves
+`last-frame.png` only then. Busy, partial reception and upload progress do not
+prove display completion. The operation budget is 90 minutes to accommodate slow
+BLE links; the existing single-worker/latest-snapshot queue remains in control.
+
+If reception fails before COMMIT, a later attempt can resend the image. After an
+ambiguous COMMIT, the same sender reconnects and queries the original receipt;
+it does not send another draw command. The host keeps four receipts in RAM per
+boot. A changed boot, missing receipt or metadata mismatch permanently rejects
+that image in the current process, requiring inspection before an explicit new
+attempt. This is not a durable exactly-once guarantee across process restarts.
+An older host reports the missing capability explicitly; there is no HTTP fallback.
 
 ## Platforms and validation
 
@@ -143,7 +170,8 @@ startup. `make check` runs tests, race tests, vet and a build (native CGO on mac
 static elsewhere); rendering
 tests requiring Chrome are skipped when Chrome is absent. Windows cross-build
 passes. Authorized Windows radio tests and their exact results are recorded in
-the host's `docs/validation-ble.md`. Native macOS radio validation remains pending.
+the host's `docs/validation-ble.md`. Mac offline-image validation is recorded in
+[`macos-deployment.md`](macos-deployment.md).
 
 The Windows test completed a 1 MiB package transfer in 554.5 seconds, verified
 staging through the existing installer, removed the test candidate and preserved
@@ -180,6 +208,14 @@ On Windows, `idle-expiry` runs `TestHardwareIdleExpiry`: it reserves a receive
 buffer without committing a package, observes physical disconnection at the
 60-second idle deadline, and checks fresh authentication, released memory and
 manager admission. It checks uptime to distinguish expiration from a reboot.
+
+`image-offline` runs `TestHardwareOfflineBLEImage` with an explicit valid PNG.
+It requires the authenticated device IP to remain `0.0.0.0`, checks a partial
+5 MiB PSRAM reservation and disconnect cleanup, rejects an invalid PNG, and
+performs exactly one refresh. It deliberately discards the completed COMMIT
+reply and recovers the receipt over a new connection, checking one COMMIT and
+unchanged uptime/reset reason. It requires visual confirmation and must not be
+blindly repeated after an ambiguous result.
 
 No listening port was added. The Windows watchdog must continue checking only
 whether `ai-quota-frame.exe` exists; the retired `:8787/healthz` flow stays removed.

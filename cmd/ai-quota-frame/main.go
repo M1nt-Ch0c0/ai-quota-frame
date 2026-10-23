@@ -2,18 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	_ "time/tzdata"
 
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/ble"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/config"
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/console"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/dashboard"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/frame"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/push"
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/quota"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/service"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/sources"
 )
@@ -23,6 +27,9 @@ func main() {
 }
 
 func run() int {
+	if len(os.Args) > 1 && os.Args[1] == "console" {
+		return runConsole(os.Args[2:], os.Stdout, os.Stderr)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "ble" {
 		return runBLE(os.Args[2:], os.Stdout, os.Stderr)
 	}
@@ -81,6 +88,14 @@ func run() int {
 		logger,
 	)
 	photoFramePusher.SetLastFramePath(configuration.LastFramePath)
+	directory, directoryErr := console.Directory()
+	var bridge *consoleBridge
+	if directoryErr == nil && runtime.GOOS == "darwin" && configuration.PhotoFrameTransport == "ble" {
+		state := console.NewState(configuration.RefreshInterval, configuration.FrameTheme, configuration.PhotoFrameTransport, configuration.PhotoFrameDeviceID, directory)
+		bridge = newConsoleBridge(state, configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken, photoFramePusher.SetPaused, quotaService.Refresh)
+		photoFramePusher.SetPaused(!state.Snapshot().Automatic)
+		photoFramePusher.SetObserver(state.Stage)
+	}
 	if configuration.PhotoFrameTransport == "ble" {
 		sender, err := ble.NewAppImageSender(configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken, "photoframe")
 		if err != nil {
@@ -88,19 +103,59 @@ func run() int {
 			return 2
 		}
 		photoFramePusher.SetSender(func(ctx context.Context, payload []byte) error {
-			return sender.Send(ctx, payload, nil)
+			if bridge == nil {
+				return sender.Send(ctx, payload, nil)
+			}
+			if err := bridge.acquire(ctx); err != nil {
+				return err
+			}
+			defer bridge.release()
+			bridge.state.Stage("connecting")
+			err := sender.Send(ctx, payload, bridge.state.Progress)
+			if err == nil {
+				bridge.state.Complete(payload)
+			}
+			if errors.Is(err, ble.ErrImagePending) {
+				bridge.state.Pending()
+			}
+			if errors.Is(err, ble.ErrImageOutcomeUnknown) {
+				bridge.state.Unknown()
+			}
+			if err != nil {
+				bridge.state.Failure(consoleTransferError(err))
+			}
+			return err
 		})
 	} else if configuration.PhotoFrameDeviceID != "" {
 		photoFramePusher.SetDiscovery(func(ctx context.Context) (string, error) {
 			return ble.DiscoverPushURL(ctx, configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken)
 		})
 	}
-	quotaService.SetRefreshObserver(photoFramePusher.ObserveRefresh)
+	quotaService.SetRefreshObserver(func(snapshot quota.Snapshot, successful bool) {
+		if bridge != nil {
+			bridge.state.Fetch(successful, snapshot.Stale, snapshot.RefreshedAt, snapshot.NextRefreshAt, len(snapshot.Accounts), len(snapshot.Errors))
+		}
+		photoFramePusher.ObserveRefresh(snapshot, successful)
+	})
 	logger.Info("PhotoPainter active push enabled", "transport", configuration.PhotoFrameTransport)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var backgroundWorkers sync.WaitGroup
+	if bridge != nil {
+		backgroundWorkers.Add(2)
+		go func() { defer backgroundWorkers.Done(); bridge.run(ctx) }()
+		go func() {
+			defer backgroundWorkers.Done()
+			path, err := console.SocketPath()
+			if err == nil {
+				err = console.Serve(ctx, path, bridge.handle)
+			}
+			if err != nil {
+				logger.Warn("local console unavailable")
+			}
+		}()
+	}
 	backgroundWorkers.Add(1)
 	go func() {
 		defer backgroundWorkers.Done()

@@ -5,3 +5,6 @@ coverage.out
 
 __pycache__/
 *.py[cod]
+
+# Local interface design exploration and tool state.
+/apps/console/.impeccable/

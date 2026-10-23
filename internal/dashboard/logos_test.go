@@ -27,8 +27,9 @@ func TestProviderLogoSVGAliases(t *testing.T) {
 	}
 }
 
-func TestProviderLogoSVGIsSelfContainedBlackAndWhite(t *testing.T) {
+func TestProviderLogoSVGIsSelfContainedAndUsesDisplayInks(t *testing.T) {
 	colorPattern := regexp.MustCompile(`(?i)#[0-9a-f]{6}`)
+	inks := map[string]bool{"#000000": true, "#ffffff": true, "#ffff00": true, "#ff0000": true, "#0000ff": true, "#00ff00": true}
 	for _, id := range []string{"codex", "xai", "kimi", "claude", "unknown"} {
 		svg := string(ProviderLogoSVG(id))
 		lower := strings.ToLower(svg)
@@ -41,7 +42,7 @@ func TestProviderLogoSVGIsSelfContainedBlackAndWhite(t *testing.T) {
 			}
 		}
 		for _, color := range colorPattern.FindAllString(lower, -1) {
-			if color != "#000000" && color != "#ffffff" {
+			if !inks[color] {
 				t.Errorf("ProviderLogoSVG(%q) contains non-palette color %q", id, color)
 			}
 		}
