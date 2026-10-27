@@ -23,6 +23,9 @@ p.add_argument(
 a = p.parse_args()
 if not a.binary.is_file() or not a.env_file.is_file():
     p.error("build binary and configure env file first")
+usb_helper = Path(__file__).with_name("usb-maintenance.py")
+if not usb_helper.is_file():
+    p.error("USB maintenance helper is missing; use a complete checkout")
 home = Path.home()
 dest = home / "Library/Application Support/ai-quota-frame"
 dest.mkdir(parents=True, exist_ok=True)
@@ -33,6 +36,9 @@ subprocess.run(
 )
 shutil.copy2(a.binary, dest / "ai-quota-frame.new")
 os.replace(dest / "ai-quota-frame.new", dest / "ai-quota-frame")
+shutil.copy2(usb_helper, dest / "usb-maintenance.py.new")
+(dest / "usb-maintenance.py.new").chmod(0o700)
+os.replace(dest / "usb-maintenance.py.new", dest / "usb-maintenance.py")
 if a.env_file.resolve() != (dest / ".env").resolve():
     fd = os.open(dest / ".env.new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "wb") as f, a.env_file.open("rb") as source:
