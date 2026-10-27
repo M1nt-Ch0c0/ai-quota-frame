@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/netip"
 	"strings"
+	"time"
 )
 
 const (
@@ -75,11 +76,13 @@ type Link interface {
 }
 
 type Client struct {
-	link Link
-	key  []byte
-	seq  uint32
-	dead bool
-	info DeviceInfo
+	link       Link
+	key        []byte
+	seq        uint32
+	dead       bool
+	info       DeviceInfo
+	cocPSM     uint16
+	cocVersion uint32
 }
 
 func tag(key []byte, domain string, data []byte) []byte {
@@ -254,6 +257,16 @@ type Package struct {
 	Bytes   int    `json:"bytes"`
 }
 
+// PackageTransferError exposes a bounded phase name while preserving the
+// underlying rejection/timeout for callers. It never contains package bytes.
+type PackageTransferError struct {
+	Stage string
+	Err   error
+}
+
+func (e *PackageTransferError) Error() string { return "BLE package " + e.Stage + ": " + e.Err.Error() }
+func (e *PackageTransferError) Unwrap() error { return e.Err }
+
 // InspectPackage validates the existing tools/module.py envelope and digest.
 // The host remains authoritative for ELF relocation/manifest/import validation.
 func InspectPackage(p []byte) (Package, error) {
@@ -301,18 +314,40 @@ func (c *Client) Install(ctx context.Context, p []byte, progress func(int, int))
 	binary.LittleEndian.PutUint32(begin, uint32(len(p)))
 	copy(begin[4:], digest[:])
 	copy(begin[36:], id)
-	ack, err := c.command(ctx, OpBegin, begin)
+	var ack []byte
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		ack, err = c.command(ctx, OpBegin, begin)
+		var rejected DeviceError
+		// Signed BUSY proves BEGIN did not acquire admission or allocate an
+		// upload. Retry only that explicit rejection, never transport errors,
+		// DATA, COMMIT, or any response whose authentication is uncertain.
+		if !errors.As(err, &rejected) || rejected != 3 || !time.Now().Before(deadline) {
+			break
+		}
+		delay := min(75*time.Millisecond, time.Until(deadline))
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return &PackageTransferError{Stage: "begin", Err: ctx.Err()}
+		case <-timer.C:
+		}
+	}
 	if err != nil {
-		return err
+		return &PackageTransferError{Stage: "begin", Err: err}
 	}
 	if len(ack) != 4 || binary.LittleEndian.Uint32(ack) > uint32(len(p)) {
-		return errors.New("invalid BLE upload offset")
+		return &PackageTransferError{Stage: "begin", Err: errors.New("invalid BLE upload offset")}
 	}
 	if err = c.uploadChunks(ctx, p, int(binary.LittleEndian.Uint32(ack)), progress); err != nil {
-		return err
+		return &PackageTransferError{Stage: "data", Err: err}
 	}
 	_, err = c.command(ctx, OpCommit, nil)
-	return err
+	if err != nil {
+		return &PackageTransferError{Stage: "commit", Err: err}
+	}
+	return nil
 }
 
 func (c *Client) uploadChunks(ctx context.Context, p []byte, offset int, progress func(int, int)) error {

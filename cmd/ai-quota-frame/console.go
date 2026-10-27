@@ -64,6 +64,7 @@ type consoleBridge struct {
 	pause      func(bool)
 	refresh    func(context.Context) error
 	withClient func(context.Context, func(context.Context, consoleDeviceClient) error) error
+	sender     *ble.AppImageSender
 }
 
 func newConsoleBridge(state *console.State, id, token string, pause func(bool), refresh func(context.Context) error) *consoleBridge {
@@ -93,15 +94,30 @@ func (b *consoleBridge) handle(r console.Request) console.Response {
 		} else {
 			response.Package = &metadata
 		}
+	case "inspect-image":
+		_, metadata, err := readConsoleImage(r.Path)
+		if err != nil {
+			response.Error = err.Error()
+		} else {
+			response.Image = &metadata
+		}
 	case "pause", "resume":
 		b.pause(r.Action == "pause")
 		if err := b.state.Automatic(r.Action == "resume"); err != nil {
 			response.Error = "本次操作已生效，但无法保存设置；重启后请检查自动推图状态"
 		}
-	case "status", "refresh", "switch", "install", "activate", "rollback", "use-slot", "cancel-trial":
+	case "status", "refresh", "switch", "install", "activate", "rollback", "use-slot", "cancel-trial",
+		"scan", "info", "diagnose", "doctor", "bind", "unbind", "remove", "push", "app-read", "app-write",
+		"wifi-list", "wifi-set", "wifi-add", "wifi-remove", "wifi-move", "wifi-backup", "wifi-update", "package",
+		"wifi-file-status", "wifi-file-upsert", "wifi-file-remove", "wifi-file-move", "serial-diagnose", "provision-generate",
+		"usb-ports", "usb-inspect", "usb-backup", "usb-flash", "usb-restore", "usb-provision":
 		s := b.state.Snapshot()
 		if s.Operation != "" {
 			response.Error = "已有操作正在执行，请等待完成"
+			break
+		}
+		if err := validateConsoleExtra(r, s); err != nil {
+			response.Error = err.Error()
 			break
 		}
 		if r.Action == "cancel-trial" && s.Transfer.Uncertain {
@@ -145,6 +161,7 @@ func (b *consoleBridge) handle(r console.Request) console.Response {
 		response.Error = "不支持的操作"
 	}
 	s := b.state.Snapshot()
+	s.Capabilities = consoleCapabilities()
 	response.State = &s
 	return response
 }
@@ -158,10 +175,21 @@ func (b *consoleBridge) run(ctx context.Context) {
 				return
 			}
 			b.state.Operation(r.Action, "")
-			err := b.execute(ctx, r)
+			// A preceding image job can become uncertain while this request
+			// waits for the shared gate. Recheck before any mutation begins.
+			err := validateConsoleExtra(r, b.state.Snapshot())
+			if err == nil {
+				err = b.execute(ctx, r)
+			}
+			if err == nil && !isConsoleExtra(r.Action) {
+				_ = b.state.Result(r.Action, map[string]any{"ok": true, "device": b.state.Snapshot().Device})
+			}
 			message := ""
 			if err != nil {
 				message = err.Error()
+				if !strings.HasPrefix(r.Action, "usb-") {
+					_ = b.state.Result(r.Action, map[string]any{"ok": false, "error": message})
+				}
 			}
 			b.state.Operation("", message)
 			b.release()
@@ -204,6 +232,12 @@ func (b *consoleBridge) execute(ctx context.Context, r console.Request) error {
 		return b.selectSlot(ctx, r)
 	case "cancel-trial":
 		return b.cancelTrial(ctx)
+	}
+	if strings.HasPrefix(r.Action, "usb-") {
+		return b.executeUSB(ctx, r)
+	}
+	if isConsoleExtra(r.Action) {
+		return b.executeExtra(ctx, r)
 	}
 	return errors.New("不支持的操作")
 }

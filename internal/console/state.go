@@ -16,13 +16,18 @@ type Event struct {
 	Message string    `json:"message"`
 }
 type Transfer struct {
-	Message     string     `json:"message,omitempty"`
-	Stage       string     `json:"stage"`
-	Done        int        `json:"done"`
-	Total       int        `json:"total"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Uncertain   bool       `json:"uncertain"`
+	Channel           string     `json:"channel,omitempty"`
+	UploadStartedAt   *time.Time `json:"upload_started_at,omitempty"`
+	UploadCompletedAt *time.Time `json:"upload_completed_at,omitempty"`
+	UploadDurationMs  int64      `json:"upload_duration_ms,omitempty"`
+	BytesPerSecond    float64    `json:"bytes_per_second,omitempty"`
+	Message           string     `json:"message,omitempty"`
+	Stage             string     `json:"stage"`
+	Done              int        `json:"done"`
+	Total             int        `json:"total"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
+	Uncertain         bool       `json:"uncertain"`
 }
 type App struct {
 	ID             string    `json:"id"`
@@ -35,48 +40,57 @@ type App struct {
 	ButtonEligible bool      `json:"button_eligible"`
 }
 type Device struct {
-	LoadedApp        int    `json:"loaded_app"`
-	Loaded           int    `json:"loaded"`
-	ELFReady         bool   `json:"ready"`
-	TrialApp         int    `json:"trial_app"`
-	Version          uint32 `json:"version"`
-	ABI              int    `json:"payload_abi"`
-	Ready            bool   `json:"runtime_ready"`
-	Confirmed        bool   `json:"confirmed"`
-	Generation       uint32 `json:"generation"`
-	Uptime           uint64 `json:"uptime_ms"`
-	ResetReason      int    `json:"reset_reason"`
-	FreePSRAM        uint32 `json:"free_psram"`
-	FreeInternal     uint32 `json:"free_internal_ram"`
-	CacheBytes       uint32 `json:"cache_bytes"`
-	Characteristics  int    `json:"ble_characteristics"`
-	LastSwitchSource string `json:"last_switch_source"`
-	Apps             []App  `json:"apps"`
+	Phase            string  `json:"phase,omitempty"`
+	ABIMinor         *uint32 `json:"payload_abi_minor,omitempty"`
+	CoCVersion       uint32  `json:"coc_version,omitempty"`
+	CoCState         uint32  `json:"coc_state,omitempty"`
+	LoadedApp        int     `json:"loaded_app"`
+	Loaded           int     `json:"loaded"`
+	ELFReady         bool    `json:"ready"`
+	TrialApp         int     `json:"trial_app"`
+	Version          uint32  `json:"version"`
+	ABI              int     `json:"payload_abi"`
+	Ready            bool    `json:"runtime_ready"`
+	Confirmed        bool    `json:"confirmed"`
+	Generation       uint32  `json:"generation"`
+	Uptime           uint64  `json:"uptime_ms"`
+	ResetReason      int     `json:"reset_reason"`
+	FreePSRAM        uint32  `json:"free_psram"`
+	FreeInternal     uint32  `json:"free_internal_ram"`
+	CacheBytes       uint32  `json:"cache_bytes"`
+	Characteristics  int     `json:"ble_characteristics"`
+	LastSwitchSource string  `json:"last_switch_source"`
+	Apps             []App   `json:"apps"`
 }
 type Snapshot struct {
-	Schema           int        `json:"schema"`
-	StartedAt        time.Time  `json:"started_at"`
-	ObservedAt       time.Time  `json:"observed_at"`
-	Automatic        bool       `json:"automatic"`
-	IntervalSeconds  int        `json:"interval_seconds"`
-	Theme            string     `json:"theme"`
-	Transport        string     `json:"transport"`
-	DeviceID         string     `json:"device_id"`
-	SourceState      string     `json:"source_state"`
-	LastFetch        *time.Time `json:"last_fetch,omitempty"`
-	NextFetch        *time.Time `json:"next_fetch,omitempty"`
-	AccountCount     int        `json:"account_count"`
-	WarningCount     int        `json:"warning_count"`
-	Transfer         Transfer   `json:"transfer"`
-	Device           *Device    `json:"device,omitempty"`
-	DeviceObservedAt *time.Time `json:"device_observed_at,omitempty"`
-	DeviceError      string     `json:"device_error,omitempty"`
-	Operation        string     `json:"operation,omitempty"`
-	OperationError   string     `json:"operation_error,omitempty"`
-	OperationDone    int        `json:"operation_done"`
-	OperationTotal   int        `json:"operation_total"`
-	PreviewPath      string     `json:"preview_path,omitempty"`
-	Events           []Event    `json:"events"`
+	Capabilities          []Capability    `json:"capabilities,omitempty"`
+	DeviceRaw             json.RawMessage `json:"device_raw,omitempty"`
+	OperationResult       json.RawMessage `json:"operation_result,omitempty"`
+	OperationResultAction string          `json:"operation_result_action,omitempty"`
+	OperationResultAt     *time.Time      `json:"operation_result_at,omitempty"`
+	Schema                int             `json:"schema"`
+	StartedAt             time.Time       `json:"started_at"`
+	ObservedAt            time.Time       `json:"observed_at"`
+	Automatic             bool            `json:"automatic"`
+	IntervalSeconds       int             `json:"interval_seconds"`
+	Theme                 string          `json:"theme"`
+	Transport             string          `json:"transport"`
+	DeviceID              string          `json:"device_id"`
+	SourceState           string          `json:"source_state"`
+	LastFetch             *time.Time      `json:"last_fetch,omitempty"`
+	NextFetch             *time.Time      `json:"next_fetch,omitempty"`
+	AccountCount          int             `json:"account_count"`
+	WarningCount          int             `json:"warning_count"`
+	Transfer              Transfer        `json:"transfer"`
+	Device                *Device         `json:"device,omitempty"`
+	DeviceObservedAt      *time.Time      `json:"device_observed_at,omitempty"`
+	DeviceError           string          `json:"device_error,omitempty"`
+	Operation             string          `json:"operation,omitempty"`
+	OperationError        string          `json:"operation_error,omitempty"`
+	OperationDone         int             `json:"operation_done"`
+	OperationTotal        int             `json:"operation_total"`
+	PreviewPath           string          `json:"preview_path,omitempty"`
+	Events                []Event         `json:"events"`
 }
 type State struct {
 	mu          sync.Mutex
@@ -116,6 +130,16 @@ func (s *State) Snapshot() Snapshot {
 	var v Snapshot
 	_ = json.Unmarshal(p, &v)
 	v.ObservedAt = time.Now()
+	if at := v.Transfer.UploadStartedAt; at != nil {
+		end := v.ObservedAt
+		if v.Transfer.UploadCompletedAt != nil {
+			end = *v.Transfer.UploadCompletedAt
+		}
+		v.Transfer.UploadDurationMs = end.Sub(*at).Milliseconds()
+		if v.Transfer.UploadDurationMs > 0 {
+			v.Transfer.BytesPerSecond = float64(v.Transfer.Done) * 1000 / float64(v.Transfer.UploadDurationMs)
+		}
+	}
 	return v
 }
 func (s *State) Automatic(enabled bool) error {
@@ -164,6 +188,9 @@ func (s *State) Stage(stage string) {
 	}
 	s.value.Transfer.Stage = stage
 	if stage == "rendering" {
+		s.value.Transfer.Channel = ""
+		s.value.Transfer.UploadStartedAt = nil
+		s.value.Transfer.UploadCompletedAt = nil
 		s.value.Transfer.Message = ""
 		now := time.Now()
 		s.value.Transfer.StartedAt = &now
@@ -175,10 +202,30 @@ func (s *State) Stage(stage string) {
 		s.event("transfer", label)
 	}
 }
+func (s *State) TransportSelected(channel string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.value.Transfer.Channel = channel
+	s.value.Transfer.UploadStartedAt = &now
+	s.value.Transfer.UploadCompletedAt = nil
+	label := "GATT 兼容通道"
+	if channel == "l2cap-coc" {
+		label = "L2CAP CoC 数据通道"
+	}
+	s.event("transfer", "本轮使用 "+label)
+}
 func (s *State) Failure(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.value.Transfer.Message = message
+	if s.value.Transfer.UploadStartedAt != nil && s.value.Transfer.UploadCompletedAt == nil {
+		now := time.Now()
+		s.value.Transfer.UploadCompletedAt = &now
+	}
+	if !s.value.Transfer.Uncertain {
+		s.value.Transfer.Stage = "failed"
+	}
 	s.event("transfer", message)
 }
 func (s *State) PackageProgress(done, total int) {
@@ -196,6 +243,10 @@ func (s *State) Progress(done, total int) {
 		s.value.Transfer.Stage = "uploading"
 	} else {
 		s.value.Transfer.Stage = "displaying"
+		if s.value.Transfer.UploadCompletedAt == nil {
+			now := time.Now()
+			s.value.Transfer.UploadCompletedAt = &now
+		}
 	}
 }
 func (s *State) Pending() {
@@ -248,9 +299,26 @@ func (s *State) DeviceResult(raw json.RawMessage, success bool) error {
 	}
 	now := time.Now()
 	s.value.Device = &device
+	s.value.DeviceRaw = append(json.RawMessage(nil), raw...)
 	s.value.DeviceObservedAt = &now
 	s.value.DeviceError = ""
 	s.event("device", "已读取真机鉴权状态")
+	return nil
+}
+
+// Result contains only explicitly sanitized operational output. Credentials,
+// HTTP response bodies and source logs must never be passed to this method.
+func (s *State) Result(action string, value any) error {
+	p, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.value.OperationResult = p
+	s.value.OperationResultAction = action
+	s.value.OperationResultAt = &now
 	return nil
 }
 func (s *State) Operation(name, message string) {

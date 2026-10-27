@@ -44,6 +44,15 @@ type nativeLink struct {
 	info, challenge, rx, tx nativeCharacteristic
 	writeSize               int
 	requestThroughput       func() error
+	cocOpen                 func(context.Context, uint16) (cocStream, error)
+}
+
+func (l *nativeLink) supportsCoC() bool { return l.cocOpen != nil }
+func (l *nativeLink) openCoC(ctx context.Context, psm uint16) (cocStream, error) {
+	if l.cocOpen == nil {
+		return nil, ErrCoCUnsupported
+	}
+	return l.cocOpen(ctx, psm)
 }
 
 func (l *nativeLink) preferThroughput() {

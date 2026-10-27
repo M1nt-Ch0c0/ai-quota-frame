@@ -52,6 +52,7 @@ func openNativeLink(ctx context.Context, adapter *bluetooth.Adapter, address blu
 		return nil, nil, err
 	}
 	link := &nativeLink{info: chars[0], challenge: chars[1], rx: chars[2], tx: chars[3], writeSize: 20}
+	configureCoC(link, address.String())
 	link.requestThroughput = func() error {
 		return device.RequestConnectionParams(bluetooth.ConnectionParams{Priority: bluetooth.ConnectionPriorityThroughput})
 	}

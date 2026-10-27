@@ -1,6 +1,6 @@
 # BLE discovery, images and application packages
 
-**Route:** BLE images use photoframe's ABI 2.1 application service. The old
+**Route:** BLE images prefer photoframe's ABI 2.2 CoC service on supported clients and retain its ABI 2.1 GATT path. The old
 host PNG sender remains a compatibility implementation and regression baseline.
 Discovery/auth/app OTA stay in the host. See the [application protocol](https://github.com/M1nt-Ch0c0/photoframe/blob/main/docs/ble-image-input.md)
 and [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md).
@@ -22,7 +22,7 @@ ai-quota-frame ble scan
 Scan results are untrusted discovery metadata. Configure `PHOTOFRAME_DEVICE_ID`
 in the service's process environment, alongside its existing independent
 `PHOTOFRAME_PUSH_TOKEN`. BLE image mode requires an ID or saved binding, a compatible host and the
-selected photoframe ABI 2.1 application. It never uses `PHOTOFRAME_PUSH_URL`, discovers an
+selected photoframe application with the matching GATT/CoC service. It never uses `PHOTOFRAME_PUSH_URL`, discovers an
 IP target, or falls back to HTTP. In HTTP mode, `PHOTOFRAME_PUSH_URL` becomes an
 optional initial/fallback address when a device ID is configured. Without an ID
 the existing HTTP-only configuration continues to work. Do not pass tokens in command-line arguments.
@@ -243,3 +243,8 @@ and sends authenticated op 13/14 through the permanent host channel. Index is
 Write success waits for the app's event completion; no immediate physical refresh
 is implied. A switch invalidates the previous generation and service revision.
 The CLI uses signed reads, rather than trusting untagged GATT notifications.
+
+
+## Package BEGIN admission (2026-10-27)
+
+The package installer distinguishes connection, BEGIN, DATA and COMMIT failures and reports bytes actually sent. An authenticated BEGIN `BUSY=3` proves the request was not admitted, so it may be retried at 75 ms intervals for about two seconds. Transport errors, DATA and COMMIT are not automatically replayed by this rule. Post-operation signed status may establish that the requested state was reached despite a missing reply.

@@ -102,6 +102,10 @@ func run() int {
 			logger.Error("initialize BLE image transport", "error", err)
 			return 2
 		}
+		if bridge != nil {
+			bridge.sender = sender
+			sender.SetTransportObserver(bridge.state.TransportSelected)
+		}
 		photoFramePusher.SetSender(func(ctx context.Context, payload []byte) error {
 			if bridge == nil {
 				return sender.Send(ctx, payload, nil)

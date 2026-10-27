@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/ble"
@@ -238,22 +241,74 @@ func (b *consoleBridge) installPackage(ctx context.Context, r console.Request) e
 		if a.Active >= 0 {
 			target = 1 - a.Active
 		}
+		activeVersion, activeValid := slotVersion(a, a.Active)
+		sameVersion := r.AllowSameVersion && r.Confirmed && activeValid && metadata.Version == activeVersion
+		if r.AllowSameVersion && !sameVersion {
+			return errors.New("同版本重建只允许与当前已激活版本一致，并需明确确认")
+		}
 		for _, v := range a.Versions {
-			if v != nil && metadata.Version <= *v {
+			if v != nil && metadata.Version <= *v && !sameVersion {
 				return errors.New("新包版本必须高于已保存版本；恢复已有版本请使用该槽的重新安装入口")
 			}
 		}
 	}
-	_ = b.withClient(operationCtx, func(ctx context.Context, c consoleDeviceClient) error {
-		return c.Install(ctx, pkg, b.state.PackageProgress)
+	var sent atomic.Int64
+	installErr := b.withClient(operationCtx, func(ctx context.Context, c consoleDeviceClient) error {
+		return c.Install(ctx, pkg, func(done, total int) { sent.Store(int64(done)); b.state.PackageProgress(done, total) })
 	})
 	if err := b.readDevice(operationCtx); err != nil {
-		return errors.New("未确认应用暂存结果；没有自动重传，请重新读取设备状态")
+		return fmt.Errorf("未确认应用暂存结果（已发送 %d/%d 字节；%s）；没有自动重传，请重新读取设备状态", sent.Load(), len(pkg), safeInstallFailure(installErr))
 	}
 	a := consoleApp(b.state.Snapshot().Device, metadata.App)
 	version, ok := slotVersion(a, target)
 	if !ok || version != metadata.Version || a.Pending != target {
-		return errors.New("设备未确认新包暂存，请检查版本与设备状态")
+		return fmt.Errorf("设备未确认新包暂存（已发送 %d/%d 字节；%s）；没有自动重传", sent.Load(), len(pkg), safeInstallFailure(installErr))
 	}
 	return nil
+}
+
+func safeInstallFailure(err error) string {
+	if err == nil {
+		return "传输已返回，读回状态未达到目标"
+	}
+	stage := "连接或鉴权"
+	var transfer *ble.PackageTransferError
+	if errors.As(err, &transfer) {
+		stage = map[string]string{"begin": "BEGIN 接纳", "data": "DATA 上传", "commit": "COMMIT 暂存"}[transfer.Stage]
+		if stage == "" {
+			stage = "应用包传输"
+		}
+	}
+	var device ble.DeviceError
+	if errors.As(err, &device) {
+		return stage + "：" + device.Error()
+	}
+	if errors.Is(err, ble.ErrAuthentication) {
+		return stage + "：响应鉴权失败"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return stage + "：等待超时"
+	}
+	if errors.Is(err, context.Canceled) {
+		return stage + "：操作已取消"
+	}
+	text := strings.ToLower(err.Error())
+	reason := "蓝牙操作未确认"
+	switch {
+	case strings.Contains(text, "discover"):
+		reason = "服务发现失败"
+	case strings.Contains(text, "challenge"):
+		reason = "鉴权挑战读取失败"
+	case strings.Contains(text, "timeout"):
+		reason = "底层蓝牙读写超时"
+	case strings.Contains(text, "fragment"):
+		reason = "分片写入失败"
+	case strings.Contains(text, "read"):
+		reason = "蓝牙特征读取失败"
+	case strings.Contains(text, "connect"):
+		reason = "蓝牙连接失败"
+	case strings.Contains(text, "offset"):
+		reason = "接收偏移响应无效"
+	}
+	return stage + "：" + reason
 }

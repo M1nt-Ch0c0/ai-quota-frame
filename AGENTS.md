@@ -1,14 +1,14 @@
 # AI quota frame agent guide
 
-**Source and documentation baseline:** main includes the resident BLE/ABI 2.1 framework, photoframe-owned image reception and its desktop client. See the [version/status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md) for source commits and remaining hardware acceptance limits.
+**Current development baseline (2026-10-27):** ABI 2.2 single-owner L2CAP CoC, photoframe v20 and the Mac sender have been deployed with a real completion receipt. The SwiftUI console lives in the independent `photopainter-console` repository; `ai-quota-frame` retains the serialized device backend. Source publication, current slots and verification limits are tracked in the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md).
 
 Read this file before changing the PC-side service. For blank-machine setup, cross-repository integration, deployment, or hardware diagnosis, also read the complete project Skill in the sibling host checkout: `../photopainter-host/.agents/skills/develop-photopainter-stack/SKILL.md`.
 
 ## Repository role
 
-This repository owns quota collection, optional usage collection, snapshot freshness, Chrome-based rendering, strict six-color PNG production, latest-frame queueing, and active pushes to the PhotoPainter. It does not own device firmware, ELF loading, E6 timing, Wi-Fi provisioning, or an inbound network service. The macOS console uses a filesystem-protected Unix socket and the same serialized BLE queue.
+This repository owns quota collection, optional usage collection, snapshot freshness, Chrome-based rendering, strict six-color PNG production, latest-frame queueing, and active pushes to the PhotoPainter. It does not own device firmware, ELF loading, E6 timing, Wi-Fi provisioning, or an inbound network service. The independent photopainter-console macOS app uses this backend through a filesystem-protected Unix socket and the same serialized BLE queue.
 
-See the [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md) for framework/app boundaries. BLE image sending uses the photoframe ABI 2.1 application service, keeping discovery/auth/OTA generic. The older host-specific transport remains as a compatibility implementation and regression baseline. Keep app business protocol descriptions with the app, and client invocation/deployment here.
+See the [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md) for framework/app boundaries. BLE image sending prefers the photoframe ABI 2.2 CoC service on supported clients and retains its ABI 2.1 GATT path, keeping discovery/auth/OTA generic. The older host-specific transport remains as a compatibility implementation and regression baseline. Keep app business protocol descriptions with the app, and client invocation/deployment here.
 
 ## Non-negotiable constraints
 

@@ -1,5 +1,14 @@
 # macOS BLE 服务部署记录
 
+## 当前部署（2026-10-27）
+
+Go后台继续使用既有PhotoPainter Renderer.app身份、私有配置和LaunchAgent；SwiftUI控制台源码迁移至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)。界面通过原Unix socket操作后台，关闭窗口不会停止采集或推图。
+
+设备宿主ABI 2.2和photoframe v20已部署，Mac后台已通过CoC实际发送67,509字节，发送阶段2.477秒，01:49:21（UTC+8）收到最终显示完成回执。控制台实际通道/速率来自后台遥测，不凭能力声明推断。版本整理和新控制台能力以项目Wiki状态页为准。
+
+下面保留的迁移过程和停服状态均为对应日期的历史记录，不是当前服务状态或新的操作授权。
+
+
 **后续路线已调整：**用户要求改由 photoframe ABI 2.1 APP 接收 PNG，宿主保留通用通信、
 鉴权与 OTA。本页记录已安装宿主通道的有效验证，不代表新路线已完成。暂不再扩展或刷写
 专用 PNG 宿主实现；接力任务见兄弟仓库 `esp32s3/MAC_BLE_APP_HANDOFF.md`。

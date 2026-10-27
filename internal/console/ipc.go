@@ -13,12 +13,45 @@ import (
 )
 
 type Request struct {
-	Action  string  `json:"action"`
-	App     string  `json:"app,omitempty"`
-	Path    string  `json:"path,omitempty"`
-	Digest  string  `json:"digest,omitempty"`
-	Slot    *int    `json:"slot,omitempty"`
-	Version *uint32 `json:"version,omitempty"`
+	Action               string        `json:"action"`
+	App                  string        `json:"app,omitempty"`
+	Path                 string        `json:"path,omitempty"`
+	Digest               string        `json:"digest,omitempty"`
+	Slot                 *int          `json:"slot,omitempty"`
+	Version              *uint32       `json:"version,omitempty"`
+	DeviceID             string        `json:"device_id,omitempty"`
+	Characteristic       *uint32       `json:"characteristic,omitempty"`
+	Text                 string        `json:"text,omitempty"`
+	DataBase64           string        `json:"data_base64,omitempty"`
+	URL                  string        `json:"url,omitempty"`
+	SSID                 string        `json:"ssid,omitempty"`
+	Password             string        `json:"password,omitempty"`
+	Index                *int          `json:"index,omitempty"`
+	To                   *int          `json:"to,omitempty"`
+	Profiles             []WiFiProfile `json:"profiles,omitempty"`
+	Output               string        `json:"output,omitempty"`
+	Port                 string        `json:"port,omitempty"`
+	Confirmed            bool          `json:"confirmed,omitempty"`
+	AllowSameVersion     bool          `json:"allow_same_version,omitempty"`
+	WiFiPath             string        `json:"wifi_path,omitempty"`
+	CredentialsConfirmed bool          `json:"credentials_confirmed,omitempty"`
+}
+type WiFiProfile struct {
+	SSID     string `json:"ssid"`
+	Password string `json:"password"`
+}
+type ImageInfo struct {
+	Bytes  int    `json:"bytes"`
+	Digest string `json:"digest"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+type Capability struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Category  string `json:"category"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
 }
 type PackageInfo struct {
 	App     string `json:"app"`
@@ -31,6 +64,7 @@ type Response struct {
 	State   *Snapshot    `json:"state,omitempty"`
 	Error   string       `json:"error,omitempty"`
 	Package *PackageInfo `json:"package,omitempty"`
+	Image   *ImageInfo   `json:"image,omitempty"`
 }
 
 func Directory() (string, error) {

@@ -65,6 +65,8 @@ func (c *Client) imageTarget(ctx context.Context, app string) ([]byte, error) {
 		UUID       string `json:"ble_service_uuid"`
 		Loaded     int    `json:"loaded_app"`
 		Ready      bool   `json:"runtime_ready"`
+		CoCPSM     uint16 `json:"coc_psm"`
+		CoCVersion uint32 `json:"coc_version"`
 		Apps       []struct {
 			ID   string `json:"id"`
 			Bank int    `json:"bank"`
@@ -82,6 +84,7 @@ func (c *Client) imageTarget(ctx context.Context, app string) ([]byte, error) {
 	if !matched || !state.Ready || state.Generation == 0 || state.Revision == 0 || state.Count != 2 || state.UUID != appImageUUID {
 		return nil, ErrAppImageUnavailable
 	}
+	c.cocPSM, c.cocVersion = state.CoCPSM, state.CoCVersion
 	target := make([]byte, 12)
 	binary.LittleEndian.PutUint32(target, state.Generation)
 	binary.LittleEndian.PutUint32(target[4:], state.Revision)
@@ -148,13 +151,51 @@ type appImageTransaction struct {
 // switching occurs here. Ambiguous requests retain their identity across retries
 // and snapshot replacement for the lifetime of this sender process.
 type AppImageSender struct {
-	id, token, app string
-	mu             sync.Mutex
-	current        *appImageTransaction
-	uncertain      map[[32]byte]*appImageTransaction
-	blocked        map[[32]byte]error
-	withClient     func(context.Context, string, string, func(context.Context, *Client) error) error
-	random         io.Reader
+	id, token, app    string
+	mu                sync.Mutex
+	current           *appImageTransaction
+	uncertain         map[[32]byte]*appImageTransaction
+	blocked           map[[32]byte]error
+	withClient        func(context.Context, string, string, func(context.Context, *Client) error) error
+	random            io.Reader
+	transportObserver func(string)
+}
+
+// SetTransportObserver reports the actual selected data path, after connection
+// setup and before BEGIN. It never infers CoC from the device capability alone.
+func (s *AppImageSender) SetTransportObserver(observer func(string)) {
+	s.mu.Lock()
+	s.transportObserver = observer
+	s.mu.Unlock()
+}
+func (s *AppImageSender) reportTransport(name string) {
+	s.mu.Lock()
+	observer := s.transportObserver
+	s.mu.Unlock()
+	if observer != nil {
+		observer(name)
+	}
+}
+
+// PrepareExplicitPush creates a new user-requested display intent even when
+// its PNG equals a previous successful frame. It never resets an uncertain
+// transaction or clears an unknown-outcome block.
+func (s *AppImageSender) PrepareExplicitPush(data []byte) error {
+	digest := sha256.Sum256(data)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, tx := range s.uncertain {
+		if !tx.terminal {
+			return ErrImagePending
+		}
+	}
+	if err, ok := s.blocked[digest]; ok {
+		return err
+	}
+	if s.current != nil && s.current.digest == digest && s.current.terminal && s.current.result == nil {
+		s.current = nil
+	}
+	return nil
 }
 
 func NewAppImageSender(id, token, app string) (*AppImageSender, error) {
@@ -265,6 +306,12 @@ func (s *AppImageSender) Send(ctx context.Context, data []byte, progress func(in
 			}
 			return err
 		}
+		if committed && !bytes.Equal(pinned, target) {
+			return s.finish(tx, imageFailure(ErrImageOutcomeUnknown))
+		}
+		if opener, ok := c.link.(cocOpener); ok && opener.supportsCoC() && c.cocVersion == 1 && c.cocPSM != 0 {
+			return s.sendCoC(ctx, c, target, tx, data, progress)
+		}
 		if committed {
 			if !bytes.Equal(pinned, target) {
 				return s.finish(tx, imageFailure(ErrImageOutcomeUnknown))
@@ -278,6 +325,7 @@ func (s *AppImageSender) Send(ctx context.Context, data []byte, progress func(in
 		if link, ok := c.link.(interface{ preferThroughput() }); ok {
 			link.preferThroughput()
 		}
+		s.reportTransport("gatt")
 		begin := make([]byte, 36)
 		binary.LittleEndian.PutUint32(begin, tx.size)
 		copy(begin[4:], digest[:])
