@@ -1,6 +1,6 @@
 # AI Quota Frame
 
-开发分支新增 **macOS L2CAP CoC 图片发送**：设备声明 ABI 2.2 CoC 能力时优先连续传输，旧设备或尚无 CoC 后端的平台继续用原 GATT 路径。2026-10-27 已替换Mac后台，并取得67,509字节/2.477秒的真实CoC传输及显示回执，见 [APP 收图说明](docs/app-ble-images.md)。
+当前 main 已包含 **macOS L2CAP CoC 图片发送**（功能提交 `f8a617f`）：设备声明 ABI 2.2 CoC 能力时优先连续传输，旧设备或尚无 CoC 后端的平台继续用原 GATT 路径。2026-10-27 已替换Mac后台，并取得67,509字节/2.477秒的真实CoC传输及显示回执，见 [APP 收图说明](docs/app-ble-images.md)。
 
 **仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md)。
 
