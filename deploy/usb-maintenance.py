@@ -110,7 +110,7 @@ def main():
     args = parser.parse_args()
     expected = normalize_id(args.expected_id)
     if not expected:
-        raise ValueError("请先绑定目标 PhotoPainter")
+        raise ValueError("请先确认目标 PhotoPainter 的 12 位设备 ID")
     from serial.tools import list_ports
     ports = list(list_ports.comports())
     if args.action == "usb-ports":
@@ -132,7 +132,7 @@ def main():
         if info["type"] != wanted or not args.digest or info["digest"] != args.digest:
             raise ValueError("文件与确认时不一致，未写入设备")
         if args.action == "usb-provision" and not args.credentials_confirmed:
-            raise ValueError("请明确确认此操作会更改 Wi-Fi/设备令牌，现有连接可能失效")
+            raise ValueError("请明确确认此操作会替换 Wi-Fi 并清除配对关系，之后需要重新按键配对")
     import esptool
     root = Path(args.output_root).resolve()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)

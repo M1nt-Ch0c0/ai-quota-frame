@@ -33,6 +33,19 @@
 每个固定场景均有 3 个字形灰阶跨量化阈值的像素差，原始灰度差不超过 2/255。
 原 HTML、数据、皮肤、图标和量化实现相同；未用手工像素补丁伪造一致。
 
+## GitHub CI 环境修正
+
+GitHub Actions [40771817743](https://github.com/M1nt-Ch0c0/ai-quota-frame/actions/runs/40771817743)
+在提交 `32190b7` 上的首次运行未进入浏览器一致性断言：下载的 Chromium
+`chrome-sandbox` 没有 root 所有权及 `4755` 权限，两个浏览器测试均在启动时失败。
+工作流现仅配置该辅助程序的所有权/权限，并在独立临时 profile 中先执行 30 秒
+限时启动检查；未加 `--no-sandbox`、跳过测试或放宽采集/像素一致性标准。
+
+修正后本机再次执行 `node web/tools/check-frame.mjs` 通过，结果与上表一致；
+`PHOTOFRAME_UI_CAPTURE=0 node web/tools/check-ui.mjs` 再次通过全部 71 项断言。
+工作流 YAML 与新增 shell 段语法检查通过。Linux 沙箱修复的最终证据需以
+后续 GitHub Actions 成功记录为准；本机 macOS 检查不能代替该项。
+
 ## 本地候选产物
 
 工具链：Go 1.27.2、Node 26.12.1、Zig 0.17.0，交叉目标
@@ -40,7 +53,7 @@
 
 | 文件 | 字节数 | SHA-256 |
 |---|---:|---|
-| `photopainter-v0.2.2.so`（Linux amd64） | 13,852,592 | `229a1ac3221fa483e6aa18f0da1fba4a8a4ba34c0c522e63bc513b42b59dca9c` |
+| `photopainter-v0.2.2.so`（Linux amd64，最终本地重建） | 13,852,592 | `71fb89ae5572f7287d6098588efa54417e86622f214c774023418dbf47ebecbb` |
 | `panel.html` | 82,445 | `3925ac9762b43b9744344684ea8559e5bec83356d7169d94f95aed096355678a` |
 | `frame.wasm.gz` | 4,378,690 | `c584aab838f27be7fc2b0aa0c6763d481fc2d8a19e93c720a602f5f281a68ec3` |
 | `wasm_exec.js` | 16,992 | `0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14` |
