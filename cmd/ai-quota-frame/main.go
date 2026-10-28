@@ -27,6 +27,9 @@ func main() {
 }
 
 func run() int {
+	if len(os.Args) > 1 && os.Args[1] == "source-check" {
+		return runSourceCheck(os.Args[2:], os.Stdout, os.Stderr)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "console" {
 		return runConsole(os.Args[2:], os.Stdout, os.Stderr)
 	}

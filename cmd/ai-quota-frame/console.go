@@ -107,7 +107,7 @@ func (b *consoleBridge) handle(r console.Request) console.Response {
 			response.Error = "本次操作已生效，但无法保存设置；重启后请检查自动推图状态"
 		}
 	case "status", "refresh", "switch", "install", "activate", "rollback", "use-slot", "cancel-trial",
-		"scan", "info", "diagnose", "doctor", "bind", "unbind", "remove", "push", "app-read", "app-write",
+		"scan", "info", "diagnose", "doctor", "bind", "unbind", "pair", "pair-status", "forget-pairing", "remove", "push", "app-read", "app-write",
 		"wifi-list", "wifi-set", "wifi-add", "wifi-remove", "wifi-move", "wifi-backup", "wifi-update", "package",
 		"wifi-file-status", "wifi-file-upsert", "wifi-file-remove", "wifi-file-move", "serial-diagnose", "provision-generate",
 		"usb-ports", "usb-inspect", "usb-backup", "usb-flash", "usb-restore", "usb-provision":
@@ -210,6 +210,10 @@ func (b *consoleBridge) readDevice(ctx context.Context) error {
 		if err == nil {
 			return b.state.DeviceResult(raw, true)
 		}
+		if errors.Is(err, ble.ErrNotPaired) {
+			_ = b.state.DeviceResult(nil, false)
+			return err
+		}
 		if ctx.Err() != nil {
 			break
 		}
@@ -271,6 +275,9 @@ func readConsolePackage(path string) ([]byte, console.PackageInfo, error) {
 }
 
 func consoleTransferError(err error) string {
+	if errors.Is(err, ble.ErrNotPaired) {
+		return "请先与相框配对，并在相框上按键确认"
+	}
 	if errors.Is(err, ble.ErrAppImageUnavailable) {
 		return "设备当前没有可用的相框 BLE 收图服务，请读取状态并检查应用版本"
 	}

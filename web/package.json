@@ -1,0 +1,17 @@
+{
+  "name": "@photopainter/web-bluetooth",
+  "version": "0.2.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && node build.mjs",
+    "test": "node --test test/*.test.ts",
+    "check": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/web-bluetooth": "0.0.21",
+    "esbuild": "0.25.12",
+    "fake-indexeddb": "6.2.5",
+    "typescript": "5.9.3"
+  }
+}

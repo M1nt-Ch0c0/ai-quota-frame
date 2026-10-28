@@ -18,7 +18,7 @@ import (
 // No quota credentials, Chrome, listeners, or .env reads are needed for BLE CLI.
 func runBLE(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|bind|unbind|info|status|push|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
+		fmt.Fprintln(stderr, "usage: ai-quota-frame ble scan|pair|paired|pair-status|forget|info|status|push|install|activate|switch|rollback|remove|inspect|app-read|app-write [options]")
 		return 2
 	}
 	command := args[0]
@@ -29,6 +29,7 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	file := flags.String("file", "", "PNG for push, or tools/module.py package for installation")
 	characteristic := flags.Uint("characteristic", 0, "zero-based application BLE characteristic index")
 	text := flags.String("text", "", "UTF-8 value for app-write (at most 128 bytes)")
+	name := flags.String("name", "PhotoPainter desktop", "client name shown on the frame during physical pairing")
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -36,21 +37,36 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "unexpected positional arguments")
 		return 2
 	}
-	if command == "unbind" {
-		if err := ble.RemoveBinding(); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintln(stdout, "device binding removed; restart the service to apply")
-		return 0
-	}
-	if *id == "" && command != "bind" && command != "inspect" && command != "scan" {
+	if *id == "" && command != "inspect" && command != "scan" {
 		bound, err := ble.LoadBinding()
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
 		*id = bound
+	}
+	if command == "forget" || command == "unbind" {
+		if *id == "" {
+			fmt.Fprintln(stderr, "select a paired device with --device-id")
+			return 2
+		}
+		if err := ble.ForgetBond(*id); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "local pairing forgotten; the frame owner can only be reset with its physical button")
+		return 0
+	}
+	if command == "paired" {
+		bond, err := ble.LoadBond(*id)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if json.NewEncoder(stdout).Encode(bond) != nil {
+			return 1
+		}
+		return 0
 	}
 	var pkg []byte
 	if command == "push" {
@@ -95,7 +111,7 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	ops := map[string]byte{"activate": ble.OpActivate, "switch": ble.OpSwitch, "rollback": ble.OpRollback, "remove": ble.OpRemove}
-	if command != "scan" && command != "bind" && command != "info" && command != "status" && command != "push" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
+	if command != "scan" && command != "bind" && command != "pair" && command != "pair-status" && command != "info" && command != "status" && command != "push" && command != "install" && command != "app-read" && command != "app-write" && ops[command] == 0 {
 		fmt.Fprintln(stderr, "unknown BLE command")
 		return 2
 	}
@@ -122,13 +138,56 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	if command == "pair" || command == "bind" {
+		op, cancel := context.WithTimeout(ctx, ble.PairingTimeout)
+		defer cancel()
+		last := ble.PairingState(255)
+		bond, err := ble.PairDevice(op, *id, *name, func(progress ble.PairingProgress) {
+			if progress.State == last {
+				return
+			}
+			last = progress.State
+			if progress.State == ble.PairDisplaying {
+				fmt.Fprintf(stderr, "配对码 %s，正在等待相框显示\n", progress.Code)
+			}
+			if progress.State == ble.PairAwaitingButton {
+				fmt.Fprintf(stderr, "核对相框上的配对码 %s，随后短按相框按键确认\n", progress.Code)
+			}
+		})
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if json.NewEncoder(stdout).Encode(bond) != nil {
+			return 1
+		}
+		return 0
+	}
+	if command == "pair-status" {
+		op, cancel := context.WithTimeout(ctx, 40*time.Second)
+		defer cancel()
+		state, err := ble.PairingStatus(op, *id)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if json.NewEncoder(stdout).Encode(struct {
+			State         ble.PairingInfo `json:"state"`
+			Authenticated bool            `json:"authenticated"`
+		}{State: state}) != nil {
+			return 1
+		}
+		return 0
+	}
 	token := os.Getenv("PHOTOFRAME_PUSH_TOKEN")
 	if token == "" {
-		fmt.Fprintln(stderr, "PHOTOFRAME_PUSH_TOKEN is required in the process environment")
-		return 2
+		if _, err := ble.LoadBond(*id); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
 	}
 	for _, name := range []string{"CLIPROXY_MANAGEMENT_KEY", "CPAMP_ADMIN_KEY"} {
-		if token == os.Getenv(name) {
+		if token != "" && token == os.Getenv(name) {
 			fmt.Fprintln(stderr, "device token must differ from management credentials")
 			return 2
 		}
@@ -166,12 +225,6 @@ func runBLE(args []string, stdout, stderr io.Writer) int {
 	managementResult := make(chan json.RawMessage, 2)
 	err := ble.WithClient(operationCtx, *id, token, func(ctx context.Context, c *ble.Client) error {
 		switch command {
-		case "bind":
-			if err := ble.SaveBinding(c.Info().ID); err != nil {
-				return err
-			}
-			_, err := fmt.Fprintln(stdout, "authenticated device ID saved separately from .env; restart the service to apply")
-			return err
 		case "app-write":
 			if err := c.AppWrite(ctx, *app, uint32(*characteristic), []byte(*text)); err != nil {
 				return err

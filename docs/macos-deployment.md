@@ -1,6 +1,44 @@
 # macOS BLE 服务部署记录
 
-## 当前部署（2026-10-27）
+## 当前源码与夜间交付（2026-10-29）：尚未实机验证
+
+新版原生客户端默认使用配对 v2，不再要求手填设备推图令牌。先在相框上
+核对六位码并短按 GPIO4 功能键同意；关系持久保存后，后续连接自动鉴权。
+长按功能键至少 8 秒释放可提出重置，即使正在刷新也会封住新工作，等待
+当前物理刷新完成后再清除关系。BOOT 和电源键不参与。
+
+原生与浏览器是独立 owner，不能把“暂停后恢复旧客户端”理解为它仍有授权。
+转移前暂停旧端并物理重置，在新端完成配对。新原生凭据保存在用户配置目录
+的 `ai-quota-frame/ble-bonds/`；文件为 0600，每设备跨进程互斥，候选不覆盖，
+确认和取消只处理匹配关系。`pp paired` 仅显示公开摘要。
+
+按最新夜间指令，本轮只检查代码、文档和本地 fixture，**不刷写、不连接设备
+蓝牙、不推图、不修改运行服务或线上服务器**。固件实际更新、物理按键、
+重启持久化、换绑、显示回执和目视验证留待用户在场。自动推图此前已暂停，
+本轮不改变该设置；早上以主验收清单中的本地只读快照为准。
+
+首次安装使用原应用身份，先保留暂停：
+
+```sh
+python3 deploy/install-macos.py --env-file /private/path/runtime.env --no-start
+alias pp='python3 /absolute/path/ai-quota-frame/deploy/pp.py'
+# 以下设备步骤仅在早上验收时执行。
+pp scan
+pp pair --device-id 001122334455 --name "PhotoPainter Mac"
+pp paired
+pp status
+```
+
+设备 ID 替换为实际扫描结果。CLI 启动不代表配对完成，必须核对已保存的关系
+与设备签名状态。常驻服务只有在本客户端仍是设备 owner、没有未确认事务、
+实体刷新和目视检查通过后，才明确恢复自动推图。当前验证边界也见
+[BLE 指南](ble.md) 与项目 Wiki 状态页。
+
+## 数据源鉴权修复（2026-10-29）
+
+当前 Manager 已停用旧 Google 网关，Mac 采集端已通过受信工具迁移至 `SOURCE_AUTH_MODE=management-key`，并将管理域名加入 `NO_PROXY`，保留其余代理设置。旧 `127.0.0.1:7890` 代理在检查时不可达，Google Token 换取失败；静态管理密钥候选已验证额度和用量采集成功。配置与备份均为私有 `0600`，没有打印或提交凭据。模式、迁移工具和验证边界见 [数据源诊断](source-auth-diagnostics.md)。此结果仅证明采集修复，后台重新加载和物理刷新另行验证。
+
+## 历史部署基线（2026-10-27）
 
 Go后台继续使用既有PhotoPainter Renderer.app身份、私有配置和LaunchAgent；SwiftUI控制台源码迁移至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)。界面通过原Unix socket操作后台，关闭窗口不会停止采集或推图。
 
@@ -9,9 +47,10 @@ Go后台继续使用既有PhotoPainter Renderer.app身份、私有配置和Launc
 下面保留的迁移过程和停服状态均为对应日期的历史记录，不是当前服务状态或新的操作授权。
 
 
-**后续路线已调整：**用户要求改由 photoframe ABI 2.1 APP 接收 PNG，宿主保留通用通信、
+**以下为 2026-10-23 历史路线：**用户当时要求改由 photoframe ABI 2.1 APP 接收 PNG，宿主保留通用通信、
 鉴权与 OTA。本页记录已安装宿主通道的有效验证，不代表新路线已完成。暂不再扩展或刷写
-专用 PNG 宿主实现；接力任务见兄弟仓库 `esp32s3/MAC_BLE_APP_HANDOFF.md`。
+专用 PNG 宿主实现。兄弟仓库 `esp32s3/MAC_BLE_APP_HANDOFF.md` 仅是历史索引，
+不是当前任务或授权来源；上述旧路线不覆盖当前配对 v2。
 
 2026-10-23，在 Apple Silicon Mac、macOS 26.3.1 上将设备通道切换为纯 BLE。
 相框位于 Mac 旁，独立 USB 供电，没有电池或 microSD。电脑仍需联网取额度，
@@ -86,7 +125,7 @@ PHOTOFRAME_PUSH_TRANSPORT=ble
 这张 59124 字节图片已通过 BLE 返回物理完成凭据，用户确认“已恢复，显示正常”。
 随后用户调整实现路线，Mac 常驻服务继续保持禁用、未加载、进程数 0，尚未恢复自动推图。
 
-## 运行配置和维护
+## 历史运行配置和维护（2026-10-23）
 
 应用位于 `~/Applications/PhotoPainter Renderer.app`，使用 CoreBluetooth，
 CLI 和 LaunchAgent 使用同一应用身份。安装器声明蓝牙和本地网络用途；没有
@@ -104,7 +143,8 @@ SSH 隧道。凭据仅通过加密 SSH 传入仓库外目录；配置和服务�
 
 此 Mac 直连 Google 鉴权接口不可用，使用已有的 `127.0.0.1:7890` 代理；
 服务配置了 `HTTP_PROXY`、`HTTPS_PROXY` 和本地地址的 `NO_PROXY`。
-该代理是此机器取数的依赖，其他机器不应照抄端口。BLE 设备通信不经过代理。
+该代理当时是此机器取数的依赖；当前模式已在页首修正，其他机器不应照抄端口。
+BLE 设备通信不经过代理。
 
 Windows 计划任务、看门狗和推图进程已停用，避免两个主机同时连接相框。
 Mac 使用 `com.m1ntch0c0.ai-quota-frame` LaunchAgent，登录启动、退出后重启，

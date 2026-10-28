@@ -190,6 +190,7 @@ func (s *AppImageSender) sendCoC(ctx context.Context, c *Client, target []byte, 
 	s.mu.Lock()
 	tx.committed = true
 	tx.target = append([]byte(nil), target...)
+	tx.bindingID = c.BindingID()
 	s.uncertain[tx.digest] = tx
 	s.mu.Unlock()
 	if err = channel.write(ctx, appImageWire(appImageCommit, tx.id, nil)); err != nil {

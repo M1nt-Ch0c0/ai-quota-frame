@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	SourceAuthMode      string
 	CLIProxyBaseURL     string
 	ManagementKey       string
 	PhotoFramePushURL   string
@@ -22,8 +23,8 @@ type Config struct {
 	PhotoFrameTransport string
 	CPAMPBaseURL        string
 	CPAMPAdminKey       string
-	// GoogleServiceAccountFile replaces both management keys with a Google ID
-	// token when the APIs sit behind an OAuth gateway that injects them.
+	// GoogleServiceAccountFile is used only in google-id-token mode, when the
+	// APIs sit behind an OAuth gateway that validates the identity token.
 	GoogleServiceAccountFile string
 	GoogleIDTokenAudience    string
 	DisplayProviders         []dashboard.DisplayProvider
@@ -76,12 +77,13 @@ func FromEnv() (Config, error) {
 	}
 
 	config := Config{
+		SourceAuthMode:      envString("SOURCE_AUTH_MODE", ""),
 		CLIProxyBaseURL:     strings.TrimRight(envString("CLIPROXY_BASE_URL", "http://127.0.0.1:8317"), "/"),
 		ManagementKey:       strings.TrimSpace(os.Getenv("CLIPROXY_MANAGEMENT_KEY")),
 		PhotoFramePushURL:   strings.TrimSpace(os.Getenv("PHOTOFRAME_PUSH_URL")),
 		PhotoFramePushToken: os.Getenv("PHOTOFRAME_PUSH_TOKEN"),
 		PhotoFrameDeviceID:  strings.TrimSpace(os.Getenv("PHOTOFRAME_DEVICE_ID")),
-		PhotoFrameTransport: envString("PHOTOFRAME_PUSH_TRANSPORT", "http"),
+		PhotoFrameTransport: envString("PHOTOFRAME_PUSH_TRANSPORT", "ble"),
 		DisplayProviders:    providers,
 		FrameTheme:          theme,
 		LastFramePath:       strings.TrimSpace(os.Getenv("LAST_FRAME_PATH")),
@@ -107,12 +109,25 @@ func FromEnv() (Config, error) {
 	if config.PassiveMaxAge < 0 {
 		return Config{}, errors.New("PASSIVE_MAX_AGE must not be negative")
 	}
-	googleAuth := config.GoogleServiceAccountFile != ""
+	if config.SourceAuthMode == "" {
+		if config.GoogleServiceAccountFile != "" {
+			if config.ManagementKey != "" || config.CPAMPAdminKey != "" {
+				return Config{}, errors.New("SOURCE_AUTH_MODE is required when Google and static management credentials are both configured")
+			}
+			config.SourceAuthMode = "google-id-token"
+		} else {
+			config.SourceAuthMode = "management-key"
+		}
+	}
+	if config.SourceAuthMode != "management-key" && config.SourceAuthMode != "google-id-token" {
+		return Config{}, errors.New("SOURCE_AUTH_MODE must be management-key or google-id-token")
+	}
+	googleAuth := config.SourceAuthMode == "google-id-token"
+	if googleAuth && config.GoogleServiceAccountFile == "" {
+		return Config{}, errors.New("GOOGLE_SERVICE_ACCOUNT_FILE is required in google-id-token mode")
+	}
 	if googleAuth && config.GoogleIDTokenAudience == "" {
 		return Config{}, errors.New("GOOGLE_ID_TOKEN_AUDIENCE is required with GOOGLE_SERVICE_ACCOUNT_FILE")
-	}
-	if !googleAuth && config.GoogleIDTokenAudience != "" {
-		return Config{}, errors.New("GOOGLE_ID_TOKEN_AUDIENCE requires GOOGLE_SERVICE_ACCOUNT_FILE")
 	}
 	if !config.DemoMode && !googleAuth && config.ManagementKey == "" {
 		return Config{}, errors.New("CLIPROXY_MANAGEMENT_KEY is required")
@@ -128,22 +143,29 @@ func FromEnv() (Config, error) {
 			return Config{}, err
 		}
 	}
-	if (config.PhotoFramePushURL == "" && config.PhotoFrameDeviceID == "") || config.PhotoFramePushToken == "" {
-		return Config{}, errors.New("PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required")
-	}
 	if config.PhotoFrameTransport != "http" && config.PhotoFrameTransport != "ble" {
 		return Config{}, errors.New("PHOTOFRAME_PUSH_TRANSPORT must be http or ble")
 	}
 	if config.PhotoFrameTransport == "ble" && config.PhotoFrameDeviceID == "" {
-		return Config{}, errors.New("PHOTOFRAME_DEVICE_ID or a saved binding is required for BLE image transport")
+		return Config{}, errors.New("尚未选择相框；请先执行 ble scan，再用 ble pair --device-id DEVICE_ID 配对")
+	}
+	if config.PhotoFrameTransport == "http" && ((config.PhotoFramePushURL == "" && config.PhotoFrameDeviceID == "") || config.PhotoFramePushToken == "") {
+		return Config{}, errors.New("PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required for legacy HTTP")
+	}
+	if config.PhotoFrameTransport == "ble" {
+		// The daemon uses a physically negotiated relationship. A leftover
+		// legacy environment value must not silently become its credential.
+		config.PhotoFramePushToken = ""
 	}
 	if config.PhotoFramePushURL != "" {
 		if err := validatePhotoFramePushURL(config.PhotoFramePushURL); err != nil {
 			return Config{}, err
 		}
 	}
-	if err := validatePhotoFramePushToken(config.PhotoFramePushToken); err != nil {
-		return Config{}, err
+	if config.PhotoFrameTransport != "ble" || config.PhotoFramePushToken != "" {
+		if err := validatePhotoFramePushToken(config.PhotoFramePushToken); err != nil {
+			return Config{}, err
+		}
 	}
 	for _, secret := range []struct {
 		name  string

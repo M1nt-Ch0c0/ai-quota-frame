@@ -11,6 +11,35 @@ import (
 	"time"
 )
 
+func TestManagementPostSuppliesDestinationOriginWithoutChangingProviderHeaders(t *testing.T) {
+	var origin string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer fixture-management-key" {
+			t.Error("management authorization missing")
+		}
+		origin = r.Header.Get("Origin")
+		if origin != server.URL {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		var request apiCallRequest
+		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Header["Origin"] != "https://provider.example.test" {
+			t.Error("provider Origin changed by management gateway handling")
+		}
+		_ = json.NewEncoder(w).Encode(apiCallResponse{StatusCode: http.StatusOK, Body: `{}`})
+	}))
+	defer server.Close()
+	client, err := NewClient(server.URL, "fixture-management-key", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.apiCall(context.Background(), apiCallRequest{Method: http.MethodGet, URL: "https://provider.example.test/quota", Header: map[string]string{"Origin": "https://provider.example.test"}})
+	if err != nil || origin != server.URL {
+		t.Fatalf("management Origin did not satisfy gateway: %v", err)
+	}
+}
+
 func TestAPICallRejectsCLIProxyInnerStatusCode(t *testing.T) {
 	client := providerFixtureClient(t, func(apiCallRequest) apiCallResponse {
 		return apiCallResponse{

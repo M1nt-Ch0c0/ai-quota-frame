@@ -78,6 +78,13 @@ type permanentPushError struct {
 	err error
 }
 
+// Connection/ownership preconditions stop this attempt without treating the
+// PNG as invalid. Only a new successful source refresh schedules another try.
+type refreshPushError struct{ err error }
+
+func (failure *refreshPushError) Error() string { return failure.err.Error() }
+func (failure *refreshPushError) Unwrap() error { return failure.err }
+
 func (failure *permanentPushError) Error() string {
 	return failure.err.Error()
 }
@@ -129,7 +136,9 @@ func (pusher *Pusher) SetDiscovery(discover func(context.Context) (string, error
 
 // SetSender selects a complete non-HTTP image transport before Run. Its success
 // must mean physical completion. There is no fallback to HTTP or IP discovery.
-// Errors implementing Permanent() bool can reject the current PNG digest.
+// Errors implementing RetryOnRefresh() bool stop the current attempt until the
+// next successful refresh without rejecting its digest. Other errors with
+// Permanent() bool can reject the PNG.
 func (pusher *Pusher) SetSender(send func(context.Context, []byte) error) {
 	pusher.send = send
 }
@@ -279,6 +288,13 @@ func (pusher *Pusher) run(ctx context.Context) {
 				continue
 			}
 
+			var deferred *refreshPushError
+			if errors.As(err, &deferred) {
+				pusher.observe("rejected")
+				pusher.logger.Warn("PhotoPainter connection needs attention; waiting for the next refresh", "error", err)
+				pusher.discard(queued.id)
+				continue
+			}
 			var permanent *permanentPushError
 			if errors.As(err, &permanent) {
 				pusher.observe("rejected")
@@ -424,6 +440,10 @@ func (pusher *Pusher) postCurrent(ctx context.Context, id uint64, payload []byte
 func (pusher *Pusher) post(ctx context.Context, payload []byte) error {
 	if pusher.send != nil {
 		err := pusher.send(ctx, payload)
+		var deferred interface{ RetryOnRefresh() bool }
+		if errors.As(err, &deferred) && deferred.RetryOnRefresh() {
+			return &refreshPushError{err: err}
+		}
 		var classified interface{ Permanent() bool }
 		if errors.As(err, &classified) && classified.Permanent() {
 			return &permanentPushError{err: err}

@@ -39,7 +39,7 @@ func TestFromEnvRequiresPhotoFrameTarget(t *testing.T) {
 	t.Setenv("DEMO_MODE", "true")
 
 	_, err := FromEnv()
-	if err == nil || !strings.Contains(err.Error(), "PHOTOFRAME_PUSH_TOKEN and either PHOTOFRAME_PUSH_URL or PHOTOFRAME_DEVICE_ID are required") {
+	if err == nil || !strings.Contains(err.Error(), "ble pair") {
 		t.Fatalf("FromEnv() error = %v", err)
 	}
 }
@@ -89,6 +89,7 @@ func TestFromEnvRejectsInvalidPhotoFramePushURLWithoutExposingToken(t *testing.T
 			t.Setenv("PHOTOFRAME_PUSH_URL", pushURL)
 			secret := validPushToken()
 			t.Setenv("PHOTOFRAME_PUSH_TOKEN", secret)
+			t.Setenv("PHOTOFRAME_PUSH_TRANSPORT", "http")
 			_, err := FromEnv()
 			if err == nil || !strings.Contains(err.Error(), "PHOTOFRAME_PUSH_URL") {
 				t.Fatalf("FromEnv() error = %v, want push URL validation error", err)
@@ -119,6 +120,7 @@ func TestFromEnvRejectsInvalidPhotoFramePushTokenWithoutExposingIt(t *testing.T)
 			t.Setenv("DEMO_MODE", "true")
 			t.Setenv("PHOTOFRAME_PUSH_URL", "http://192.0.2.10/api/push")
 			t.Setenv("PHOTOFRAME_PUSH_TOKEN", token)
+			t.Setenv("PHOTOFRAME_PUSH_TRANSPORT", "http")
 			_, err := FromEnv()
 			if err == nil || !strings.Contains(err.Error(), "PHOTOFRAME_PUSH_TOKEN") {
 				t.Fatalf("FromEnv() error = %v, want token validation error", err)
@@ -234,8 +236,32 @@ func TestFromEnvGoogleServiceAccountRequiresAudience(t *testing.T) {
 	}
 }
 
+func TestFromEnvExplicitManagementKeyIgnoresRetainedGoogleAccount(t *testing.T) {
+	clearConfigEnv(t)
+	setValidPhotoFrameTarget(t)
+	t.Setenv("SOURCE_AUTH_MODE", "management-key")
+	t.Setenv("CLIPROXY_MANAGEMENT_KEY", "management-key")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/retained/sa.json")
+	c, err := FromEnv()
+	if err != nil || c.SourceAuthMode != "management-key" {
+		t.Fatalf("explicit static mode: %v", err)
+	}
+}
+
+func TestFromEnvRejectsAmbiguousSourceCredentials(t *testing.T) {
+	clearConfigEnv(t)
+	setValidPhotoFrameTarget(t)
+	t.Setenv("CLIPROXY_MANAGEMENT_KEY", "management-key")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/retained/sa.json")
+	t.Setenv("GOOGLE_ID_TOKEN_AUDIENCE", "audience")
+	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "SOURCE_AUTH_MODE is required") {
+		t.Fatalf("expected explicit auth selection, got %v", err)
+	}
+}
+
 func setValidPhotoFrameTarget(t *testing.T) {
 	t.Helper()
+	t.Setenv("PHOTOFRAME_PUSH_TRANSPORT", "http") // These fixtures exercise the legacy HTTP contract.
 	t.Setenv("PHOTOFRAME_PUSH_URL", "http://192.0.2.10/api/push")
 	t.Setenv("PHOTOFRAME_PUSH_TOKEN", validPushToken())
 }
@@ -252,7 +278,7 @@ func clearConfigEnv(t *testing.T) {
 		"REFRESH_INTERVAL", "PASSIVE_MAX_AGE", "REQUEST_TIMEOUT", "MAX_CONCURRENCY", "TZ",
 		"DEMO_MODE", "CPAMP_BASE_URL", "CPAMP_ADMIN_KEY", "DISPLAY_PROVIDERS",
 		"PHOTOFRAME_PUSH_URL", "PHOTOFRAME_PUSH_TOKEN", "PHOTOFRAME_DEVICE_ID", "PHOTOFRAME_PUSH_TRANSPORT",
-		"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_ID_TOKEN_AUDIENCE",
+		"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_ID_TOKEN_AUDIENCE", "SOURCE_AUTH_MODE",
 	} {
 		t.Setenv(name, "")
 	}

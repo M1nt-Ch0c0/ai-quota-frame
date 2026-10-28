@@ -165,6 +165,40 @@ func requirePermanent(t *testing.T, err error) {
 		t.Fatal("expected permanent error", err)
 	}
 }
+func TestUnpairedImageStopsImmediatelyButCanSendAfterPairing(t *testing.T) {
+	d := newAppImageDevice()
+	s, err := NewAppImageSender("000102030405", "", "photoframe")
+	if err != nil {
+		t.Fatal("fixed token still required", err)
+	}
+	count := 0
+	s.withClient = func(context.Context, string, string, func(context.Context, *Client) error) error {
+		count++
+		return ErrNotPaired
+	}
+	data := testPNG(t, color.Black)
+	err = s.Send(context.Background(), data, nil)
+	if !errors.Is(err, ErrNotPaired) || count != 1 {
+		t.Fatal("pairing requirement was retried", err, count)
+	}
+	requirePermanent(t, err)
+	var nextRefresh interface{ RetryOnRefresh() bool }
+	if !errors.As(err, &nextRefresh) || !nextRefresh.RetryOnRefresh() {
+		t.Fatal("outer queue would permanently reject the PNG before pairing")
+	}
+	if len(s.blocked) != 0 {
+		t.Fatal("unpaired error permanently blocked an image")
+	}
+	s.withClient = func(ctx context.Context, _, _ string, job func(context.Context, *Client) error) error {
+		return job(ctx, d.client(t))
+	}
+	if err = s.Send(context.Background(), data, nil); err != nil {
+		t.Fatal("newly paired sender could not retry user intent", err)
+	}
+	if d.renders != 1 {
+		t.Fatal("unexpected physical render count", d.renders)
+	}
+}
 func TestAppImageSignedServiceAndReceiptRecovery(t *testing.T) {
 	for _, lost := range []string{"write", "read"} {
 		t.Run(lost, func(t *testing.T) {

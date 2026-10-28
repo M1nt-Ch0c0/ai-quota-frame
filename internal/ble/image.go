@@ -24,14 +24,19 @@ var ErrImageUnsupported = errors.New("host does not support BLE images; update t
 // Permanent prevents automatic repeats of invalid, rejected or ambiguous images.
 // The transport keeps receipt identity even if cancellation races native I/O.
 type imageError struct {
-	err       error
-	permanent bool
+	err            error
+	permanent      bool
+	retryOnRefresh bool
 }
 
-func (e *imageError) Error() string   { return e.err.Error() }
-func (e *imageError) Unwrap() error   { return e.err }
-func (e *imageError) Permanent() bool { return e.permanent }
-func imageFailure(err error) error    { return &imageError{err: err, permanent: true} }
+func (e *imageError) Error() string        { return e.err.Error() }
+func (e *imageError) Unwrap() error        { return e.err }
+func (e *imageError) Permanent() bool      { return e.permanent }
+func (e *imageError) RetryOnRefresh() bool { return e.retryOnRefresh }
+func imageFailure(err error) error         { return &imageError{err: err, permanent: true} }
+func imageStateFailure(err error) error {
+	return &imageError{err: err, permanent: true, retryOnRefresh: true}
+}
 
 // ValidatePNG performs the same dimensions/palette/envelope checks expected by
 // the device. The device independently decodes before any display I/O.

@@ -16,6 +16,7 @@ func TestRunFailsChromePreflightBeforeStartingWorkers(t *testing.T) {
 	}
 	t.Setenv("DEMO_MODE", "true")
 	t.Setenv("PHOTOFRAME_PUSH_URL", "http://192.0.2.10/api/push")
+	t.Setenv("PHOTOFRAME_PUSH_TRANSPORT", "http")
 	t.Setenv("PHOTOFRAME_PUSH_TOKEN", strings.Repeat("p", 64))
 	t.Setenv("TZ", "UTC")
 	t.Setenv("CHROME_BIN", filepath.Join(t.TempDir(), "missing-chrome"))

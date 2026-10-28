@@ -28,7 +28,7 @@ import (
 
 func isConsoleExtra(action string) bool {
 	switch action {
-	case "scan", "info", "diagnose", "doctor", "bind", "unbind", "remove", "push", "app-read", "app-write",
+	case "scan", "info", "diagnose", "doctor", "bind", "unbind", "pair", "pair-status", "forget-pairing", "remove", "push", "app-read", "app-write",
 		"wifi-list", "wifi-set", "wifi-add", "wifi-remove", "wifi-move", "wifi-backup", "wifi-update", "package",
 		"wifi-file-status", "wifi-file-upsert", "wifi-file-remove", "wifi-file-move", "serial-diagnose", "provision-generate":
 		return true
@@ -37,41 +37,44 @@ func isConsoleExtra(action string) bool {
 }
 func consoleCapabilities() []console.Capability {
 	rows := []console.Capability{
-		{"scan", "扫描附近设备", "设备", true, "扫描结果尚未鉴权；连接后核对设备身份"},
-		{"info", "读取设备信息", "设备", true, ""}, {"status", "读取完整状态", "设备", true, ""},
-		{"bind", "绑定设备", "设备", true, "保存独立绑定文件；显式配置的设备 ID 优先，重启后应用"},
-		{"unbind", "解除绑定", "设备", true, "不修改私有配置文件中的显式设备 ID"},
-		{"inspect", "检查应用包", "应用", true, ""}, {"install", "安装到备用槽", "应用", true, "需再次核对文件摘要"},
-		{"activate", "激活候选", "应用", true, ""}, {"switch", "切换应用", "应用", true, ""},
-		{"rollback", "回退版本", "应用", true, ""}, {"remove", "移除非运行应用", "应用", true, "不能移除当前运行应用"},
-		{"use-slot", "使用指定槽版本", "应用", true, ""}, {"cancel-trial", "结束未确认试运行", "应用", true, ""},
-		{"inspect-image", "检查 PNG", "图片", true, ""}, {"push", "发送自选 PNG", "图片", true, "需 800×480 严格六色 PNG；结果不确定时只查询原回执"},
-		{"pause", "暂停自动推图", "图片", true, "不打断已接纳的显示"}, {"resume", "恢复自动推图", "图片", true, ""},
-		{"refresh", "立即采集更新", "图片", true, ""},
-		{"app-read", "读取应用特征", "应用通信", true, "需要当前 APP 注册的 ABI 2.1 GATT 特征"},
-		{"app-write", "写入应用特征", "应用通信", true, "索引 0–3、最多 128 字节；只发送一次"},
-		{"wifi-list", "读取 Wi-Fi 列表", "网络", true, "需要设备可达私网 HTTP 和可用 SD 配置"},
-		{"wifi-add", "新增或更新网络", "网络", true, "保存后下次重启生效"},
-		{"wifi-remove", "删除网络", "网络", true, "保存后下次重启生效"},
-		{"wifi-move", "调整网络优先级", "网络", true, "使用从 1 开始的序号"},
-		{"wifi-set", "替换网络列表", "网络", true, "最多 10 个网络；密码不返回界面"},
-		{"wifi-backup", "备份 Wi-Fi 配置", "网络", true, "创建新的 0600 私有文件，不覆盖现有文件"},
-		{"wifi-update", "从文件更新 Wi-Fi", "网络", true, "读取受保护 JSON，保存后重启生效"},
-		{"diagnose", "设备与后台诊断", "诊断", true, "不打开串口、不触发刷新"},
-		{"doctor", "开发环境诊断", "诊断", true, "运行既有只读 doctor，需本机宿主源码"},
-		{"package", "打包应用 ELF", "开发", true, "需本机宿主打包工具，输出新 .pkg 文件"},
-		{"wifi-file-status", "读取本地 Wi-Fi JSON", "SD与配置", true, "不打开串口；密码不回显"},
-		{"wifi-file-upsert", "编辑本地网络", "SD与配置", true, "SD 或私有 JSON 的原子更新"},
-		{"wifi-file-remove", "删除本地网络", "SD与配置", true, "序号从 1 开始"},
-		{"wifi-file-move", "调整本地优先级", "SD与配置", true, "序号从 1 开始"},
-		{"serial-diagnose", "串口启动诊断", "USB维护", true, "精确核对目标 USB 身份；可能复位设备"},
-		{"provision-generate", "生成私有 NVS 配置", "USB维护", true, "可信配置文件由工具读取，不回显凭据"},
-		{"usb-provision", "写入 NVS 配置", "USB维护", true, "完整备份后只写 NVS；设备令牌可能改变"},
-		{"usb-ports", "枚举 USB 设备", "USB维护", true, ""},
-		{"usb-inspect", "检查固件或备份", "USB维护", true, ""},
-		{"usb-backup", "完整 Flash 备份", "USB维护", true, "串口操作可能复位设备"},
-		{"usb-flash", "更新宿主固件", "USB维护", true, "精确端口、完整备份、仅写 factory"},
-		{"usb-restore", "恢复设备备份", "USB维护", true, "需明确确认设备身份和备份摘要"},
+		{ID: "scan", Title: "扫描附近设备", Category: "设备", Available: true, Reason: "扫描结果尚未鉴权；连接后核对设备身份"},
+		{ID: "info", Title: "读取设备信息", Category: "设备", Available: true, Reason: ""}, {ID: "status", Title: "读取完整状态", Category: "设备", Available: true, Reason: ""},
+		{ID: "bind", Title: "配对相框", Category: "设备", Available: true, Reason: "核对配对码后，在相框上按键同意"},
+		{ID: "pair", Title: "配对相框", Category: "设备", Available: true, Reason: "核对配对码后，在相框上按键同意"},
+		{ID: "pair-status", Title: "查看配对状态", Category: "设备", Available: true},
+		{ID: "forget-pairing", Title: "忘记本机配对", Category: "设备", Available: true, Reason: "设备端解绑请长按相框按键"},
+		{ID: "unbind", Title: "忘记本机配对", Category: "设备", Available: true, Reason: "设备端解绑请长按相框按键"},
+		{ID: "inspect", Title: "检查应用包", Category: "应用", Available: true, Reason: ""}, {ID: "install", Title: "安装到备用槽", Category: "应用", Available: true, Reason: "需再次核对文件摘要"},
+		{ID: "activate", Title: "激活候选", Category: "应用", Available: true, Reason: ""}, {ID: "switch", Title: "切换应用", Category: "应用", Available: true, Reason: ""},
+		{ID: "rollback", Title: "回退版本", Category: "应用", Available: true, Reason: ""}, {ID: "remove", Title: "移除非运行应用", Category: "应用", Available: true, Reason: "不能移除当前运行应用"},
+		{ID: "use-slot", Title: "使用指定槽版本", Category: "应用", Available: true, Reason: ""}, {ID: "cancel-trial", Title: "结束未确认试运行", Category: "应用", Available: true, Reason: ""},
+		{ID: "inspect-image", Title: "检查 PNG", Category: "图片", Available: true, Reason: ""}, {ID: "push", Title: "发送自选 PNG", Category: "图片", Available: true, Reason: "需 800×480 严格六色 PNG；结果不确定时只查询原回执"},
+		{ID: "pause", Title: "暂停自动推图", Category: "图片", Available: true, Reason: "不打断已接纳的显示"}, {ID: "resume", Title: "恢复自动推图", Category: "图片", Available: true, Reason: ""},
+		{ID: "refresh", Title: "立即采集更新", Category: "图片", Available: true, Reason: ""},
+		{ID: "app-read", Title: "读取应用特征", Category: "应用通信", Available: true, Reason: "需要当前 APP 注册的 ABI 2.1 GATT 特征"},
+		{ID: "app-write", Title: "写入应用特征", Category: "应用通信", Available: true, Reason: "索引 0–3、最多 128 字节；只发送一次"},
+		{ID: "wifi-list", Title: "读取 Wi-Fi 列表", Category: "网络", Available: true, Reason: "需要设备可达私网 HTTP 和可用 SD 配置"},
+		{ID: "wifi-add", Title: "新增或更新网络", Category: "网络", Available: true, Reason: "保存后下次重启生效"},
+		{ID: "wifi-remove", Title: "删除网络", Category: "网络", Available: true, Reason: "保存后下次重启生效"},
+		{ID: "wifi-move", Title: "调整网络优先级", Category: "网络", Available: true, Reason: "使用从 1 开始的序号"},
+		{ID: "wifi-set", Title: "替换网络列表", Category: "网络", Available: true, Reason: "最多 10 个网络；密码不返回界面"},
+		{ID: "wifi-backup", Title: "备份 Wi-Fi 配置", Category: "网络", Available: true, Reason: "创建新的 0600 私有文件，不覆盖现有文件"},
+		{ID: "wifi-update", Title: "从文件更新 Wi-Fi", Category: "网络", Available: true, Reason: "读取受保护 JSON，保存后重启生效"},
+		{ID: "diagnose", Title: "设备与后台诊断", Category: "诊断", Available: true, Reason: "不打开串口、不触发刷新"},
+		{ID: "doctor", Title: "开发环境诊断", Category: "诊断", Available: true, Reason: "运行既有只读 doctor，需本机宿主源码"},
+		{ID: "package", Title: "打包应用 ELF", Category: "开发", Available: true, Reason: "需本机宿主打包工具，输出新 .pkg 文件"},
+		{ID: "wifi-file-status", Title: "读取本地 Wi-Fi JSON", Category: "SD与配置", Available: true, Reason: "不打开串口；密码不回显"},
+		{ID: "wifi-file-upsert", Title: "编辑本地网络", Category: "SD与配置", Available: true, Reason: "SD 或私有 JSON 的原子更新"},
+		{ID: "wifi-file-remove", Title: "删除本地网络", Category: "SD与配置", Available: true, Reason: "序号从 1 开始"},
+		{ID: "wifi-file-move", Title: "调整本地优先级", Category: "SD与配置", Available: true, Reason: "序号从 1 开始"},
+		{ID: "serial-diagnose", Title: "串口启动诊断", Category: "USB维护", Available: true, Reason: "精确核对目标 USB 身份；可能复位设备"},
+		{ID: "provision-generate", Title: "生成私有 NVS 配置", Category: "USB维护", Available: true, Reason: "可信配置文件由工具读取，不回显凭据"},
+		{ID: "usb-provision", Title: "写入 NVS 配置", Category: "USB维护", Available: true, Reason: "完整备份后只写 NVS；设备令牌可能改变"},
+		{ID: "usb-ports", Title: "枚举 USB 设备", Category: "USB维护", Available: true, Reason: ""},
+		{ID: "usb-inspect", Title: "检查固件或备份", Category: "USB维护", Available: true, Reason: ""},
+		{ID: "usb-backup", Title: "完整 Flash 备份", Category: "USB维护", Available: true, Reason: "串口操作可能复位设备"},
+		{ID: "usb-flash", Title: "更新宿主固件", Category: "USB维护", Available: true, Reason: "精确端口、完整备份、仅写 factory"},
+		{ID: "usb-restore", Title: "恢复设备备份", Category: "USB维护", Available: true, Reason: "需明确确认设备身份和备份摘要"},
 	}
 	for i := range rows {
 		if rows[i].ID == "doctor" || rows[i].ID == "package" || rows[i].ID == "serial-diagnose" || rows[i].ID == "provision-generate" {
@@ -92,7 +95,7 @@ func consoleCapabilities() []console.Capability {
 }
 func validateConsoleExtra(r console.Request, s console.Snapshot) error {
 	switch r.Action {
-	case "bind", "unbind", "remove", "push", "app-write", "wifi-set", "wifi-add", "wifi-remove", "wifi-move", "wifi-backup", "wifi-update", "package", "usb-backup", "usb-flash", "usb-restore", "usb-provision",
+	case "bind", "pair", "unbind", "forget-pairing", "remove", "push", "app-write", "wifi-set", "wifi-add", "wifi-remove", "wifi-move", "wifi-backup", "wifi-update", "package", "usb-backup", "usb-flash", "usb-restore", "usb-provision",
 		"wifi-file-upsert", "wifi-file-remove", "wifi-file-move", "serial-diagnose", "provision-generate":
 		if !r.Confirmed {
 			return errors.New("请确认此操作后再执行")
@@ -156,7 +159,35 @@ func (b *consoleBridge) executeExtra(ctx context.Context, r console.Request) err
 			return errors.New("扫描未完成；检查蓝牙开关和后台权限")
 		}
 		return b.state.Result(r.Action, map[string]any{"devices": devices, "authenticated": false})
-	case "info", "bind":
+	case "pair", "bind":
+		id := r.DeviceID
+		if id == "" {
+			id = b.id
+		}
+		name := r.Text
+		if name == "" {
+			name = "PhotoPainter desktop"
+		}
+		op, cancel := context.WithTimeout(ctx, ble.PairingTimeout)
+		defer cancel()
+		bond, err := ble.PairDevice(op, id, name, func(progress ble.PairingProgress) { _ = b.state.Result(r.Action, progress) })
+		if err != nil {
+			return err
+		}
+		return b.state.Result(r.Action, map[string]any{"paired": true, "bond": bond, "requires_restart": id != b.id})
+	case "pair-status":
+		id := r.DeviceID
+		if id == "" {
+			id = b.id
+		}
+		op, cancel := context.WithTimeout(ctx, 40*time.Second)
+		defer cancel()
+		info, err := ble.PairingStatus(op, id)
+		if err != nil {
+			return err
+		}
+		return b.state.Result(r.Action, map[string]any{"authenticated": false, "pairing": info})
+	case "info":
 		id := r.DeviceID
 		if id == "" {
 			id = b.id
@@ -172,21 +203,16 @@ func (b *consoleBridge) executeExtra(ctx context.Context, r console.Request) err
 		if err != nil {
 			return errors.New("未完成指定设备的双向鉴权；未保存绑定")
 		}
-		result := map[string]any{"info": info, "authenticated": true}
-		if r.Action == "bind" {
-			if err = ble.SaveBinding(info.ID); err != nil {
-				return err
-			}
-			result["requires_restart"] = true
-			result["explicit_device_id"] = os.Getenv("PHOTOFRAME_DEVICE_ID") != ""
-			result["message"] = "绑定文件已保存；重启后台后生效。私有配置中的显式设备 ID 优先。"
+		return b.state.Result(r.Action, map[string]any{"info": info, "authenticated": true})
+	case "unbind", "forget-pairing":
+		id := r.DeviceID
+		if id == "" {
+			id = b.id
 		}
-		return b.state.Result(r.Action, result)
-	case "unbind":
-		if err := ble.RemoveBinding(); err != nil {
+		if err := ble.ForgetBond(id); err != nil {
 			return err
 		}
-		return b.state.Result(r.Action, map[string]any{"ok": true, "requires_restart": true, "explicit_device_id": os.Getenv("PHOTOFRAME_DEVICE_ID") != "", "message": "独立绑定已解除；不会清除私有配置中的显式设备 ID。"})
+		return b.state.Result(r.Action, map[string]any{"ok": true, "message": "本机已忘记相框。更换连接方请长按相框按键重置配对。"})
 	case "remove":
 		return b.removeApplication(ctx, r.App)
 	case "push":
@@ -312,10 +338,19 @@ func consoleHostRepo() string {
 func localDiagnostic() map[string]any {
 	serial, _ := filepath.Glob("/dev/cu.*")
 	binding, bindingErr := ble.LoadBinding()
+	deviceID := os.Getenv("PHOTOFRAME_DEVICE_ID")
+	if deviceID == "" {
+		deviceID = binding
+	}
+	paired, pending := false, false
+	if bond, err := ble.LoadBond(deviceID); err == nil {
+		paired = !bond.Pending
+		pending = bond.Pending
+	}
 	binary, _ := os.Executable()
 	return map[string]any{"os": runtime.GOOS, "arch": runtime.GOARCH, "go_version": runtime.Version(), "binary": binary,
 		"configured_device_id": os.Getenv("PHOTOFRAME_DEVICE_ID"), "binding_device_id": binding, "binding_valid": bindingErr == nil,
-		"device_token_configured": os.Getenv("PHOTOFRAME_PUSH_TOKEN") != "", "serial_ports": serial,
+		"paired": paired, "pairing_pending": pending, "serial_ports": serial,
 		"host_tools_present": fileExists(filepath.Join(consoleHostRepo(), "tools", "doctor.py")),
 		"battery_observable": false, "battery_reason": "现有固件没有上报电压、电量或 PMIC 关机原因；不能从 POWERON 推断电池耗尽"}
 }

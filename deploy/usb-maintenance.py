@@ -102,6 +102,7 @@ def main():
     parser.add_argument("--action", required=True, choices=["usb-ports", "usb-inspect", "usb-backup", "usb-flash", "usb-restore", "usb-provision"])
     parser.add_argument("--expected-id", required=True)
     parser.add_argument("--port", default="")
+    parser.add_argument("--baud", type=int, choices=[115200, 230400, 460800], default=115200)
     parser.add_argument("--path", default="")
     parser.add_argument("--digest", default="")
     parser.add_argument("--credentials-confirmed", action="store_true")
@@ -144,7 +145,7 @@ def main():
     with log_path.open("w") as log, contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
         try:
             emit(phase="connecting", message="正在识别设备；串口连接会触发复位")
-            esp = esptool.detect_chip(args.port, 460800)
+            esp = esptool.detect_chip(args.port, args.baud)
             if esp.CHIP_NAME != "ESP32-S3" or bytes(esp.read_mac()).hex() != expected:
                 raise ValueError("串口设备身份不匹配，未写入设备")
             esp = esp.run_stub()

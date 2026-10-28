@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>
+<title>PhotoPainter 相框</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg-primary,#fff);color:var(--text-primary,#1f2329);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:14px;line-height:1.6}
+.pp-app{--pp-bg:var(--bg-primary,#fff);--pp-surface:var(--bg-secondary,#f5f7fa);--pp-text:var(--text-primary,#1f2329);--pp-muted:var(--text-secondary,#5c6675);--pp-primary:var(--primary-color,#2563eb);--pp-border:var(--border-color,#e2e6ec);--pp-danger:var(--error-color,#d92d20);--pp-success:var(--success-color,#15803d);--pp-warning:var(--warning-color,#b45309);--pp-tint:color-mix(in srgb,var(--pp-primary) 8%,var(--pp-bg));--pp-track:color-mix(in srgb,var(--pp-primary) 14%,var(--pp-bg));max-width:1240px;margin:0 auto;padding:20px 24px 32px;color:var(--pp-text)}
+.pp-app h1,.pp-app h2,.pp-app p{margin:0}
+.pp-app :focus-visible{outline:2px solid var(--pp-primary);outline-offset:2px}
+.pp-sr{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.pp-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.pp-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.pp-brand h1{font-size:18px;font-weight:600;line-height:1.3}
+.pp-mark{position:relative;display:inline-block;flex:none;width:24px;height:16px;border:2px solid currentColor;border-radius:3px;color:var(--pp-primary)}
+.pp-mark::before{content:'';position:absolute;inset:2px 2px 5px;border-radius:1px;background:currentColor;opacity:.28}
+.pp-mark::after{content:'';position:absolute;left:50%;bottom:1px;width:4px;height:2px;margin-left:-2px;border-radius:1px;background:currentColor}
+.pp-mark-lg{width:64px;height:42px;border-width:3px;border-radius:6px}
+.pp-mark-lg::before{inset:5px 5px 11px;border-radius:2px}
+.pp-mark-lg::after{bottom:3px;width:10px;height:3px;margin-left:-5px}
+.pp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border:1px solid var(--pp-border);border-radius:8px;background:var(--pp-bg);color:var(--pp-text);font:inherit;font-weight:500;line-height:1.2;white-space:nowrap;cursor:pointer;transition:background-color .15s,border-color .15s,color .15s}
+.pp-btn:hover:not(:disabled){border-color:color-mix(in srgb,var(--pp-primary) 50%,var(--pp-border));color:var(--pp-primary)}
+.pp-btn.is-primary{background:var(--pp-primary);border-color:var(--pp-primary);color:#fff}
+.pp-btn.is-primary:hover:not(:disabled){background:color-mix(in srgb,var(--pp-primary) 86%,#000);color:#fff}
+.pp-btn-quiet{background:transparent;border-color:transparent;color:var(--pp-muted)}
+.pp-btn-quiet:hover:not(:disabled){background:var(--pp-surface);border-color:transparent;color:var(--pp-text)}
+.pp-btn-danger,.pp-btn-danger:hover:not(:disabled){color:var(--pp-danger)}
+.pp-btn:disabled{opacity:.48;cursor:not-allowed}
+.pp-btn[aria-busy='true']{cursor:progress}
+.pp-btn-note{font-size:12px;font-weight:400;color:var(--pp-muted)}
+#source-settings[data-state='ready'] .pp-btn-note{color:var(--pp-success)}
+#source-settings[data-state='error'] .pp-btn-note{color:var(--pp-danger)}
+.pp-icon-btn{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--pp-muted);font:inherit;font-size:20px;line-height:1;cursor:pointer}
+.pp-icon-btn:hover:not(:disabled){background:var(--pp-surface);color:var(--pp-text)}
+.pp-icon-btn:disabled{opacity:.4;cursor:not-allowed}
+.pp-card{background:var(--pp-bg);border:1px solid var(--pp-border);border-radius:12px;padding:16px}
+.pp-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pp-card-title{font-size:15px;font-weight:600;line-height:1.4}
+.pp-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.pp-main>*+*{margin-top:12px}
+.pp-stage-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.pp-meta{margin-top:2px;font-size:12px;color:var(--pp-muted);overflow-wrap:anywhere}
+.pp-tools{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.pp-frame{position:relative;margin:0;aspect-ratio:5/3;overflow:hidden;border:1px solid var(--pp-border);border-radius:8px;background:var(--pp-surface)}
+.pp-frame img{display:block;width:100%;height:100%;object-fit:contain;background:#fff}
+.pp-frame[aria-busy='true']::after{content:'';position:absolute;inset:0;background:color-mix(in srgb,var(--pp-bg) 45%,transparent)}
+.pp-frame[aria-busy='true']::before{content:'';position:absolute;z-index:1;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--pp-primary),transparent) no-repeat;background-size:40% 100%;animation:pp-sweep 1.2s linear infinite}
+.pp-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;color:var(--pp-muted)}
+.pp-empty .pp-mark{margin-bottom:6px;color:var(--pp-muted);opacity:.5}
+.pp-empty-title{font-size:15px;font-weight:600;color:var(--pp-text)}
+.pp-empty-hint{max-width:28em;font-size:13px}
+.pp-stage-foot{min-height:1.6em;margin-top:8px;font-size:12px;color:var(--pp-muted)}
+.pp-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--pp-muted);white-space:nowrap}
+.pp-pill::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.45}
+.pp-device[data-state='connected'] .pp-pill{color:var(--pp-success)}
+.pp-device[data-state='connecting'] .pp-pill,.pp-device[data-state='busy'] .pp-pill{color:var(--pp-primary)}
+.pp-device:not([data-state='offline']) .pp-pill::before{opacity:1}
+.pp-device[data-state='connecting'] .pp-pill::before,.pp-device[data-state='busy'] .pp-pill::before{animation:pp-pulse 1.2s ease-in-out infinite}
+.pp-device-name{margin-top:6px;font-weight:500;overflow-wrap:anywhere}
+.pp-device[data-state='none'] .pp-device-name{font-weight:400;color:var(--pp-muted)}
+.pp-device .pp-row>.pp-btn{flex:1 1 auto}
+.pp-device .pp-row>#disconnect{flex:0 0 auto}
+.pp-device-info{margin-top:12px;padding-top:10px;border-top:1px solid var(--pp-border);font-size:13px}
+.pp-app summary{width:fit-content;border-radius:4px;color:var(--pp-muted);font-size:13px;cursor:pointer}
+.pp-app summary:hover{color:var(--pp-text)}
+.pp-kv{margin:10px 0 0}
+.pp-kv>div{display:grid;grid-template-columns:5.5em minmax(0,1fr);gap:12px;padding:2px 0}
+.pp-kv>div:has(>dd:empty){display:none}
+.pp-kv dt{color:var(--pp-muted)}
+.pp-kv dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;overflow-wrap:anywhere}
+.pp-note{margin-top:10px;font-size:12px;color:var(--pp-muted)}
+#forget{margin-top:8px}
+.pp-pending{border-color:color-mix(in srgb,var(--pp-warning) 55%,var(--pp-border))}
+.pp-pending-title{font-size:14px;font-weight:600}
+.pp-status-text{font-weight:600;overflow-wrap:anywhere}
+.pp-detail{margin-top:2px;font-size:13px;color:var(--pp-muted)}
+.pp-transfer[data-tone='success'] .pp-status-text{color:var(--pp-success)}
+.pp-transfer[data-tone='error'] .pp-status-text{color:var(--pp-danger)}
+.pp-transfer .pp-row>#send{flex:1 1 auto}
+.pp-progress-line{display:flex;align-items:center;gap:8px;margin-top:10px}
+.pp-progress-line:has(>progress[hidden]){display:none}
+.pp-progress-text{min-width:3em;font-size:12px;color:var(--pp-muted);text-align:right;font-variant-numeric:tabular-nums}
+.pp-progress-text:empty{display:none}
+progress{flex:1;min-width:0;height:6px;border:0;border-radius:3px;background:var(--pp-track);-webkit-appearance:none;appearance:none;overflow:hidden}
+progress::-webkit-progress-bar{background:var(--pp-track);border-radius:3px}
+progress::-webkit-progress-value{background:var(--pp-primary);border-radius:3px;transition:width .2s ease}
+progress::-moz-progress-bar{background:var(--pp-primary);border-radius:3px}
+progress:indeterminate{background:var(--pp-track) linear-gradient(90deg,transparent,var(--pp-primary),transparent) no-repeat;background-size:40% 100%;animation:pp-sweep 1.4s linear infinite}
+progress:indeterminate::-webkit-progress-bar{background:transparent}
+progress:indeterminate::-moz-progress-bar{background:transparent}
+.pp-dialog{width:min(440px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);padding:0;overflow:auto;border:0;border-radius:14px;background:var(--pp-bg);color:var(--pp-text);box-shadow:0 24px 60px rgba(15,23,42,.2)}
+.pp-dialog::backdrop{background:rgba(15,23,42,.4)}
+.pp-dialog-form{margin:0}
+.pp-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px 4px 20px}
+.pp-dialog-head h2{font-size:16px;font-weight:600}
+.pp-dialog-body{padding:8px 20px 0}
+.pp-dialog-foot{display:flex;align-items:center;gap:8px;padding:16px 20px 20px}
+.pp-spacer{flex:1}
+.pp-field{display:grid;gap:6px;min-width:0;margin:0 0 16px;padding:0;border:0}
+.pp-field>label,.pp-field>legend{padding:0;font-weight:500}
+.pp-field>legend{margin-bottom:6px}
+.pp-input{width:100%;min-height:36px;padding:7px 10px;border:1px solid var(--pp-border);border-radius:8px;background:var(--pp-bg);color:var(--pp-text);font:inherit}
+.pp-input:focus-visible{outline-offset:0;border-color:var(--pp-primary)}
+textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.pp-hint{font-size:12px;color:var(--pp-muted)}
+.pp-error{font-size:13px;color:var(--pp-danger)}
+#providers[data-invalid] .pp-hint{color:var(--pp-danger)}
+.pp-checks{display:flex;flex-wrap:wrap;gap:8px}
+.pp-check{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border:1px solid var(--pp-border);border-radius:8px;cursor:pointer}
+.pp-check:has(input:checked){border-color:var(--pp-primary);background:var(--pp-tint)}
+.pp-check input{margin:0;accent-color:var(--pp-primary)}
+.pp-import{margin-bottom:4px;padding-top:12px;border-top:1px solid var(--pp-border)}
+.pp-import-body{display:grid;gap:8px;margin-top:10px}
+.pp-import .pp-row{justify-content:flex-end;margin-top:0}
+.pp-pair{width:min(380px,calc(100vw - 32px));text-align:center}
+.pp-pair-top{display:flex;justify-content:flex-end;padding:10px 10px 0}
+.pp-pair-body{padding:0 24px}
+.pp-pair-visual{position:relative;width:64px;margin:0 auto 14px}
+.pp-pair-visual .pp-mark{display:block}
+.pp-pair-badge{position:absolute;right:-12px;bottom:-10px;width:24px;height:24px;border-radius:50%;background:var(--pp-bg);box-shadow:0 0 0 3px var(--pp-bg)}
+.pp-pair[data-state='connecting'] .pp-pair-badge,.pp-pair[data-state='showing'] .pp-pair-badge,.pp-pair[data-state='approving'] .pp-pair-badge{border:3px solid var(--pp-track);border-top-color:var(--pp-primary);animation:pp-spin .9s linear infinite}
+.pp-pair[data-state='waiting'] .pp-pair-badge{background:var(--pp-primary);animation:pp-pulse 1.6s ease-in-out infinite}
+.pp-pair[data-state='waiting'] .pp-pair-badge::after{content:'';position:absolute;inset:8px;border-radius:50%;background:#fff}
+.pp-pair[data-state='success'] .pp-pair-badge{background:var(--pp-success)}
+.pp-pair[data-state='success'] .pp-pair-badge::after{content:'';position:absolute;left:8px;top:4px;width:7px;height:12px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.pp-pair[data-state='error'] .pp-pair-badge{background:var(--pp-danger)}
+.pp-pair[data-state='error'] .pp-pair-badge::after{content:'!';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:14px;font-weight:700;line-height:1}
+.pp-pair-device{font-size:12px;color:var(--pp-muted);overflow-wrap:anywhere}
+.pp-pair-title{margin-top:2px;font-size:18px;font-weight:600;line-height:1.4}
+.pp-code{margin-top:16px;padding:12px 8px;border-radius:12px;background:var(--pp-surface);font-size:36px;font-weight:600;line-height:1.2;letter-spacing:.12em;text-indent:.12em;font-variant-numeric:tabular-nums;transition:color .2s}
+.pp-pair[data-state='showing'] .pp-code{color:var(--pp-muted)}
+.pp-pair-instruction{margin-top:12px;font-size:13px;color:var(--pp-muted)}
+.pp-pair[data-state='waiting'] .pp-pair-instruction{color:var(--pp-text)}
+.pp-pair-error{margin-top:12px}
+.pp-pair-actions{display:flex;justify-content:center;gap:8px;padding:20px 24px 24px}
+.pp-pair-actions .pp-btn{min-width:96px}
+@keyframes pp-spin{to{transform:rotate(360deg)}}
+@keyframes pp-pulse{50%{opacity:.35}}
+@keyframes pp-sweep{from{background-position:-70% 0}to{background-position:170% 0}}
+@keyframes pp-rise{from{opacity:0;transform:translateY(8px)}}
+@media (prefers-reduced-motion:no-preference){.pp-dialog[open]{animation:pp-rise .18s ease-out}}
+@media (min-width:900px){.pp-main{display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto 1fr;column-gap:20px;align-items:start}.pp-main>*+*{margin-top:0}.pp-stage{grid-column:1;grid-row:1/5}.pp-main>:not(.pp-stage){grid-column:2;margin-bottom:12px}}
+@media (min-width:1200px){.pp-main{grid-template-columns:minmax(0,1fr) 320px}}
+@media (max-width:899px){.pp-app{padding:12px 12px 0}.pp-head{margin-bottom:12px}.pp-stage{padding:12px}.pp-stage-head{flex-direction:column;align-items:stretch}.pp-tools{display:grid;grid-template-columns:1fr 1fr}#read-cpm{grid-column:1/-1}.pp-transfer{position:sticky;bottom:0;z-index:2;margin:12px -12px 0;border-width:1px 0 0;border-radius:14px 14px 0 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(15,23,42,.08)}}
+@media (max-width:560px){.pp-dialog,.pp-pair{width:100%;max-width:none;max-height:90dvh;margin:auto 0 0;border-width:1px 0 0;border-radius:16px 16px 0 0;padding-bottom:env(safe-area-inset-bottom)}}
+@media (pointer:coarse){.pp-btn,.pp-check,input.pp-input,select.pp-input{min-height:44px}.pp-icon-btn{width:44px;height:44px}}
+@media (prefers-reduced-motion:reduce){.pp-app *,.pp-app *::before,.pp-app *::after{animation:none!important;transition:none!important}progress:indeterminate,.pp-frame[aria-busy='true']::before{background:repeating-linear-gradient(90deg,var(--pp-primary) 0 6px,var(--pp-track) 6px 12px)}}
+@media (forced-colors:active){.pp-pill::before,.pp-pair-badge,.pp-mark::before,.pp-mark::after{forced-color-adjust:none;background:CanvasText}.pp-btn.is-primary{border-width:2px}progress{border:1px solid CanvasText}}
+.pp-app ::selection{background:var(--pp-tint);color:var(--pp-text)}.pp-input{caret-color:var(--pp-primary)}.pp-app *{scrollbar-color:var(--pp-border) var(--pp-bg)}.pp-app a{text-underline-offset:3px}#device-select{margin-top:10px}.pp-pending-title{color:var(--pp-warning)}
+</style>
+</head>
+<body>
+<div class='pp-app'>
+<header class='pp-head'>
+  <div class='pp-brand'><span class='pp-mark' aria-hidden='true'></span><h1>PhotoPainter 相框</h1></div>
+  <button type='button' id='source-settings' class='pp-btn' data-state='missing' aria-haspopup='dialog'>数据源 <span id='source-state' class='pp-btn-note'>未设置</span></button>
+</header>
+<main class='pp-main'>
+  <section class='pp-card pp-stage' aria-labelledby='stage-title'>
+    <div class='pp-stage-head'>
+      <div>
+        <h2 id='stage-title' class='pp-card-title'>相框画面</h2>
+        <p id='image-meta' class='pp-meta' hidden></p>
+      </div>
+      <div class='pp-tools'>
+        <button type='button' id='read-cpm' class='pp-btn is-primary'>更新画面</button>
+        <button type='button' id='view-settings' class='pp-btn' aria-haspopup='dialog'>显示设置</button>
+        <button type='button' id='download' class='pp-btn' disabled>下载 PNG</button>
+      </div>
+    </div>
+    <figure id='frame' class='pp-frame' aria-busy='false'>
+      <img id='preview' width='800' height='480' alt='' decoding='async' hidden>
+      <div id='empty-preview' class='pp-empty'>
+        <span class='pp-mark pp-mark-lg' aria-hidden='true'></span>
+        <p class='pp-empty-title'>还没有画面</p>
+        <p class='pp-empty-hint'>更新画面后，这里显示相框上的实际画面。</p>
+      </div>
+    </figure>
+    <div class='pp-stage-foot'><time id='snapshot-time' hidden></time></div>
+  </section>
+  <section id='device' class='pp-card pp-device' data-state='none' aria-labelledby='device-title'>
+    <div class='pp-card-head'>
+      <h2 id='device-title' class='pp-card-title'>相框</h2>
+      <span id='device-state' class='pp-pill' hidden></span><button type='button' id='add-device' class='pp-btn pp-btn-quiet' hidden>添加</button>
+    </div>
+    <p id='device-name' class='pp-device-name'>尚未添加相框</p><label class='pp-sr' for='device-select'>已配对相框</label><select id='device-select' class='pp-input' hidden></select>
+    <div class='pp-row'>
+      <button type='button' id='connect' class='pp-btn'>添加相框</button>
+      <button type='button' id='disconnect' class='pp-btn pp-btn-quiet' hidden>断开</button><button type='button' id='prepare-frame' class='pp-btn' hidden>打开相框应用</button>
+    </div>
+    <details id='device-info' class='pp-device-info' hidden>
+      <summary>相框信息</summary>
+      <dl class='pp-kv'>
+        <div><dt>设备标识</dt><dd id='device-id'></dd></div>
+        <div><dt>配对标识</dt><dd id='device-fingerprint'></dd></div>
+        <div><dt>配对时间</dt><dd id='device-paired-at'></dd></div>
+        <div><dt>相框应用</dt><dd id='device-firmware'></dd></div>
+      </dl>
+      <p class='pp-note'>移除后，需在相框上长按功能键 8 秒重置，才能再次配对。</p>
+      <button type='button' id='forget' class='pp-btn pp-btn-danger'>移除此相框</button>
+    </details>
+  </section>
+  <section id='pending' class='pp-card pp-pending' aria-labelledby='pending-title' hidden>
+    <h2 id='pending-title' class='pp-pending-title'>上次发送未确认</h2>
+    <p id='pending-detail' class='pp-detail'>图片已上传，但未收到相框的刷新结果。</p>
+    <div class='pp-row'>
+      <button type='button' id='recover' class='pp-btn'>核对结果</button>
+      <button type='button' id='acknowledge' class='pp-btn pp-btn-quiet'>核对画面后清除</button>
+    </div>
+  </section>
+  <section class='pp-card pp-transfer' data-tone='neutral' aria-labelledby='transfer-title'>
+    <h2 id='transfer-title' class='pp-sr'>发送状态</h2>
+    <div role='status'>
+      <p id='status-text' class='pp-status-text'>更新画面以生成画面</p>
+      <p id='detail' class='pp-detail' hidden></p>
+    </div>
+    <div class='pp-progress-line'>
+      <progress id='progress' max='100' aria-labelledby='status-text' hidden></progress>
+      <span id='progress-text' class='pp-progress-text' aria-hidden='true'></span>
+    </div>
+    <div class='pp-row'>
+      <button type='button' id='send' class='pp-btn' aria-describedby='status-text' disabled>发送到相框</button>
+      <button type='button' id='cancel' class='pp-btn pp-btn-quiet' hidden>取消发送</button>
+    </div>
+  </section>
+</main>
+<dialog id='source-dialog' class='pp-dialog' aria-labelledby='source-title'>
+  <form method='dialog' class='pp-dialog-form'>
+    <div class='pp-dialog-head'>
+      <h2 id='source-title'>CPM 数据源</h2>
+      <button type='button' id='source-close' class='pp-icon-btn' aria-label='关闭'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' aria-hidden='true'><path d='m6 6 12 12M18 6 6 18'/></svg></button>
+    </div>
+    <div class='pp-dialog-body'>
+      <div class='pp-field'>
+        <label for='panel-key'>管理密钥</label>
+        <input id='panel-key' class='pp-input' type='password' autocomplete='off' autocapitalize='off' spellcheck='false' aria-describedby='panel-key-hint source-error' autofocus>
+        <p id='panel-key-hint' class='pp-hint'>用于读取当前 CPM 的额度与用量。</p>
+        <p id='source-error' class='pp-error' role='alert' hidden></p>
+      </div>
+      <details class='pp-import'>
+        <summary>导入快照 JSON</summary>
+        <div class='pp-import-body'>
+          <p id='snapshot-hint' class='pp-hint'>载入 ai-quota-frame 的完整快照。</p>
+          <label for='snapshot-json' class='pp-sr'>快照 JSON</label>
+          <textarea id='snapshot-json' class='pp-input' rows='5' spellcheck='false' aria-describedby='snapshot-hint snapshot-error' placeholder='粘贴快照 JSON'></textarea>
+          <p id='snapshot-error' class='pp-error' role='alert' hidden></p>
+          <div class='pp-row'>
+            <input type='file' id='snapshot-file' accept='.json,application/json' hidden>
+            <button type='button' id='choose-json' class='pp-btn pp-btn-quiet'>选择 JSON</button><input id='file' type='file' accept='image/png' hidden><button type='button' id='load-png' class='pp-btn pp-btn-quiet'>载入 PNG</button>
+            <button type='button' id='load-json' class='pp-btn' disabled>载入</button>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class='pp-dialog-foot'>
+      <button type='button' id='clear-panel-key' class='pp-btn pp-btn-quiet' disabled>清除密钥</button>
+      <span class='pp-spacer'></span>
+      <button type='submit' id='source-save' class='pp-btn is-primary' value='save'>保存并读取</button>
+    </div>
+  </form>
+</dialog>
+<dialog id='settings-dialog' class='pp-dialog' aria-labelledby='settings-title'>
+  <form method='dialog' class='pp-dialog-form'>
+    <div class='pp-dialog-head'>
+      <h2 id='settings-title'>显示设置</h2>
+      <button type='button' id='settings-close' class='pp-icon-btn' aria-label='关闭'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' aria-hidden='true'><path d='m6 6 12 12M18 6 6 18'/></svg></button>
+    </div>
+    <div class='pp-dialog-body'>
+      <div class='pp-field'>
+        <label for='theme'>主题</label>
+        <select id='theme' class='pp-input' autofocus>
+          <option value='mint-skin' selected>薄荷皮肤（默认）</option>
+          <option value='classic'>经典</option>
+          <option value='mint'>薄荷</option>
+          <option value='arcade'>街机</option>
+          <option value='pop'>波普</option>
+        </select>
+      </div>
+      <fieldset id='providers' class='pp-field' aria-describedby='providers-hint'>
+        <legend>显示的服务</legend>
+        <div class='pp-checks'>
+          <label class='pp-check'><input type='checkbox' name='provider' value='claude:CLAUDE' checked>Claude</label>
+          <label class='pp-check'><input type='checkbox' name='provider' value='codex:CODEX' checked>Codex</label>
+          <label class='pp-check'><input type='checkbox' name='provider' value='xai:GROK' checked>Grok</label><label class='pp-check'><input type='checkbox' name='provider' value='kimi:KIMI'>Kimi</label><label class='pp-check'><input type='checkbox' name='provider' value='gemini-cli:GEMINI'>Gemini CLI</label><label class='pp-check'><input type='checkbox' name='provider' value='antigravity:ANTIGRAVITY'>Antigravity</label>
+        </div>
+        <p id='providers-hint' class='pp-hint'>选择 1–5 个平台。</p>
+      </fieldset>
+      <div class='pp-field'>
+        <label for='timezone'>时区</label>
+        <select id='timezone' class='pp-input'>
+          <option value='Asia/Shanghai' selected>北京时间（Asia/Shanghai）</option>
+          <option value='Asia/Hong_Kong'>香港（Asia/Hong_Kong）</option>
+          <option value='Asia/Taipei'>台北（Asia/Taipei）</option>
+          <option value='Asia/Tokyo'>东京（Asia/Tokyo）</option>
+          <option value='Asia/Singapore'>新加坡（Asia/Singapore）</option>
+          <option value='Europe/London'>伦敦（Europe/London）</option>
+          <option value='Europe/Berlin'>柏林（Europe/Berlin）</option>
+          <option value='America/New_York'>纽约（America/New_York）</option>
+          <option value='America/Los_Angeles'>洛杉矶（America/Los_Angeles）</option>
+          <option value='UTC'>UTC</option>
+        </select>
+      </div>
+      <div class='pp-field'><label for='refresh-seconds'>更新间隔</label><select id='refresh-seconds' class='pp-input'><option value='60'>1 分钟</option><option value='300'>5 分钟</option><option value='900' selected>15 分钟</option><option value='1800'>30 分钟</option><option value='3600'>1 小时</option></select></div><label class='pp-check'><input id='automatic' type='checkbox'>画面变化时自动发送</label>
+    </div>
+    <div class='pp-dialog-foot'>
+      <span class='pp-spacer'></span>
+      <button type='submit' id='settings-save' class='pp-btn is-primary' value='save'>应用</button>
+    </div>
+  </form>
+</dialog>
+<dialog id='pair-dialog' class='pp-dialog pp-pair' data-state='connecting' aria-labelledby='pair-title' aria-describedby='pair-instruction'>
+  <div class='pp-pair-top'><button type='button' id='pair-close' class='pp-icon-btn' aria-label='关闭'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' aria-hidden='true'><path d='m6 6 12 12M18 6 6 18'/></svg></button></div>
+  <div class='pp-pair-body'>
+    <div class='pp-pair-visual' aria-hidden='true'><span class='pp-mark pp-mark-lg'></span><span class='pp-pair-badge'></span></div>
+    <p id='pair-device-name' class='pp-pair-device'>PhotoPainter 相框</p>
+    <h2 id='pair-title' class='pp-pair-title'>正在连接</h2>
+    <div aria-live='polite'>
+      <p id='pair-code' class='pp-code' hidden><span class='pp-code-digits' aria-hidden='true'></span><span class='pp-code-spoken pp-sr'></span></p>
+      <p id='pair-instruction' class='pp-pair-instruction'>请让相框保持开机，放在附近。</p>
+    </div>
+    <p id='pair-error' class='pp-error pp-pair-error' role='alert' hidden></p>
+  </div>
+  <div class='pp-pair-actions'>
+    <button type='button' id='pair-cancel' class='pp-btn' autofocus>取消</button>
+    <button type='button' id='pair-retry' class='pp-btn is-primary' hidden>重试</button>
+    <button type='button' id='pair-complete' class='pp-btn is-primary' hidden>完成</button>
+  </div>
+</dialog>
+</div>
+<!-- SCRIPT -->
+</body>
+</html>

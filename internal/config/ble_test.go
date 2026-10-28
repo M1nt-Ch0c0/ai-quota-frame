@@ -9,6 +9,7 @@ func TestBLETargetWithoutFixedIP(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("DEMO_MODE", "true")
 	t.Setenv("PHOTOFRAME_PUSH_TOKEN", validPushToken())
+	t.Setenv("PHOTOFRAME_PUSH_TRANSPORT", "http") // Historical BLE discovery for HTTP.
 	t.Setenv("PHOTOFRAME_DEVICE_ID", "AA:BB:CC:DD:EE:FF")
 	c, err := FromEnv()
 	if err != nil || c.PhotoFrameDeviceID != "aabbccddeeff" || c.PhotoFramePushURL != "" {
@@ -58,8 +59,19 @@ func TestBLEImageTransportRequiresIdentityAndNoIP(t *testing.T) {
 		t.Fatal("unknown transport accepted")
 	}
 	t.Setenv("PHOTOFRAME_PUSH_TRANSPORT", "")
+	t.Setenv("PHOTOFRAME_DEVICE_ID", "001122334455")
 	c, err = FromEnv()
-	if err != nil || c.PhotoFrameTransport != "http" {
-		t.Fatal("HTTP default changed", err)
+	if err != nil || c.PhotoFrameTransport != "ble" || c.PhotoFramePushToken != "" {
+		t.Fatal("new installations must use physical pairing", err)
+	}
+}
+
+func TestPhysicalPairingBLEDoesNotRequireFixedToken(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("DEMO_MODE", "true")
+	t.Setenv("PHOTOFRAME_DEVICE_ID", "001122334455")
+	c, err := FromEnv()
+	if err != nil || c.PhotoFramePushToken != "" || c.PhotoFrameTransport != "ble" {
+		t.Fatal("paired BLE configuration required a fixed token", err)
 	}
 }

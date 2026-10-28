@@ -142,6 +142,7 @@ type appImageTransaction struct {
 	digest              [32]byte
 	size                uint32
 	target              []byte
+	bindingID           string
 	committed, terminal bool
 	result              error
 }
@@ -203,8 +204,10 @@ func NewAppImageSender(id, token, app string) (*AppImageSender, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = validateToken(token); err != nil {
-		return nil, err
+	if token != "" {
+		if err = validateToken(token); err != nil {
+			return nil, err
+		}
 	}
 	if app != "photoframe" {
 		return nil, errors.New("BLE PNG input requires the photoframe application")
@@ -299,6 +302,7 @@ func (s *AppImageSender) Send(ctx context.Context, data []byte, progress func(in
 		s.mu.Lock()
 		committed := tx.committed
 		pinned := bytes.Clone(tx.target)
+		bindingID := tx.bindingID
 		s.mu.Unlock()
 		if err != nil {
 			if committed && errors.Is(err, ErrAppImageUnavailable) {
@@ -306,7 +310,7 @@ func (s *AppImageSender) Send(ctx context.Context, data []byte, progress func(in
 			}
 			return err
 		}
-		if committed && !bytes.Equal(pinned, target) {
+		if committed && (!bytes.Equal(pinned, target) || bindingID != c.BindingID()) {
 			return s.finish(tx, imageFailure(ErrImageOutcomeUnknown))
 		}
 		if opener, ok := c.link.(cocOpener); ok && opener.supportsCoC() && c.cocVersion == 1 && c.cocPSM != 0 {
@@ -369,6 +373,7 @@ func (s *AppImageSender) Send(ctx context.Context, data []byte, progress func(in
 		s.mu.Lock()
 		tx.committed = true
 		tx.target = bytes.Clone(target)
+		tx.bindingID = c.BindingID()
 		s.uncertain[tx.digest] = tx
 		s.mu.Unlock()
 		r, err = c.appImageExchange(ctx, target, appImageWire(appImageCommit, tx.id, nil))
@@ -382,6 +387,11 @@ func (s *AppImageSender) Send(ctx context.Context, data []byte, progress func(in
 	s.mu.Unlock()
 	if terminal {
 		return result
+	}
+	if !committed && (errors.Is(err, ErrNotPaired) || errors.Is(err, ErrAuthentication)) {
+		// Stop this queue attempt without permanently blocking the same image
+		// after the user completes physical pairing.
+		return imageStateFailure(err)
 	}
 	var permanent interface{ Permanent() bool }
 	if errors.Is(err, ErrAuthentication) || (errors.As(err, &permanent) && permanent.Permanent()) {

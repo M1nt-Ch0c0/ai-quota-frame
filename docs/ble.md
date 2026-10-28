@@ -1,70 +1,88 @@
 # BLE discovery, images and application packages
 
+**配对 v2 尚未实机验证。** This guide describes the current source contract.
+Offline tests/builds and historical v1 radio results do not prove v2 physical
+button approval, reboot persistence, revocation or display completion.
+
 **Route:** BLE images prefer photoframe's ABI 2.2 CoC service on supported clients and retain its ABI 2.1 GATT path. The old
 host PNG sender remains a compatibility implementation and regression baseline.
 Discovery/auth/app OTA stay in the host. See the [application protocol](https://github.com/M1nt-Ch0c0/photoframe/blob/main/docs/ble-image-input.md)
 and [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md).
 
-The host firmware must include the resident PhotoPainter BLE v1 service. BLE
-finds the device by its stable ID, pushes PNG images and installs applications
-without an IP route. Set `PHOTOFRAME_PUSH_TRANSPORT=ble` for a device path that
-does not require Wi-Fi. The default remains `http` for existing deployments.
-The computer still needs Internet access to collect quota data.
+The v2 host firmware advertises protocol version 2 and supports physical pairing.
+BLE finds the device by stable ID, pushes PNG images and installs applications
+without a Wi-Fi route. New installations default to `PHOTOFRAME_PUSH_TRANSPORT=ble`.
+The computer still needs Internet access for quota collection.
 
-## Configuration
-
-Scan explicitly to find the stable 12-digit device ID:
+## Physical pairing
 
 ```sh
 ai-quota-frame ble scan
+ai-quota-frame ble pair --device-id 001122334455 --name "PhotoPainter desktop"
 ```
 
-Scan results are untrusted discovery metadata. Configure `PHOTOFRAME_DEVICE_ID`
-in the service's process environment, alongside its existing independent
-`PHOTOFRAME_PUSH_TOKEN`. BLE image mode requires an ID or saved binding, a compatible host and the
-selected photoframe application with the matching GATT/CoC service. It never uses `PHOTOFRAME_PUSH_URL`, discovers an
-IP target, or falls back to HTTP. In HTTP mode, `PHOTOFRAME_PUSH_URL` becomes an
-optional initial/fallback address when a device ID is configured. Without an ID
-the existing HTTP-only configuration continues to work. Do not pass tokens in command-line arguments.
-The program does not read, rewrite or save `.env`, and does not save a new IP to
-disk. Continue using the existing trusted launcher to load environment variables.
+Use the scanned stable ID. Compare the six digits on the computer and frame,
+then briefly press the GPIO4 function button to approve (not BOOT or power).
+The device commits its single owner
+relationship before reporting success. The client saves its candidate key before
+arming the device prompt, so a lost approval reply can recover by authenticated
+reconnection without repeating the physical ceremony.
 
-Alternatively, after loading the token through that launcher, bind once without
-editing `.env`:
+Future BLE operations automatically use the saved relationship. No device token
+is required. `ble paired` prints only public pairing metadata; `ble pair-status`
+reads advisory device pairing state; `ble forget` only removes this computer's
+credential. `ble bind` / `ble unbind` are aliases for physical pairing / local
+forgetting. To change owners, hold the GPIO4 function button for at least eight seconds
+and release it. The request is latched even during display, immediately blocking
+new operations; an already-started physical refresh finishes before the owner is
+cleared. This resets the relationship without changing Wi-Fi
+or installed applications. Browser and native clients are distinct owners.
 
-```sh
-ai-quota-frame ble bind --device-id 001122334455
-```
+Native credentials are atomically saved to `ble-bonds/` beside the public
+`ble-device.json` selection file under the OS user configuration directory.
+Unix files use mode 0600 with file/directory sync; Windows uses write-through
+publication and the user-profile directory's access control. Custom Windows
+directories must have private ACLs. Each device has an OS file lock shared by
+native processes. Candidate publication never overwrites an existing candidate;
+confirmation and cleanup match the exact identity/key, so a late result cannot
+resurrect a locally forgotten relationship. `PHOTOFRAME_BLE_BOND_DIR` may override the private directory with an
+absolute path. Credentials are never included in CLI/status JSON. An explicit
+`PHOTOFRAME_DEVICE_ID` selects a device but does not supply or bypass its bond.
+The most recently confirmed pairing is the default when that setting is absent.
 
-Bind authenticates the device before atomically saving only its public ID in
-`ai-quota-frame/ble-device.json` under the OS user configuration directory
-(`%APPDATA%` on Windows). The next service start uses this ID automatically.
-The explicit environment ID takes precedence. `ble unbind` removes the binding;
-restart the service to apply. `PHOTOFRAME_BLE_BINDING_FILE` may override the path
-with an absolute filename. This separate JSON never contains the token, IP or
-Wi-Fi credentials; a damaged record is rejected rather than silently replaced.
+Every connection uses a fresh challenge and a key derived from the saved bond.
+The pairing BID is pinned alongside image request identity; after reset or
+re-pairing, an earlier owner's pending picture cannot be queried or redrawn.
+If no bond exists, the background worker reports pairing required without
+opening the radio or spending the image retry budget.
 
-In HTTP mode, at startup and after a push failure the serialized worker scans for that ID,
-connects and performs mutual HMAC authentication, then uses the **authenticated**
-private IPv4 record to update its in-memory `/api/push` target. A spoofed broadcast
-alone cannot redirect a Bearer-bearing request. Discovery is throttled to once
-per 30 seconds and has a 30-second outer deadline. A CLI connection allows up to
-30 seconds for scanning, including asynchronous Windows disconnect delays. A
-failed scan keeps the last address. A successful scan does not immediately repeat
-a failed physical push: existing status classification, deduplication, latest
-snapshot behavior, retry delay and the 11-minute HTTP deadline still apply.
-
-The device's SSID is represented by a truncated SHA-256 hash. It is not a secret
-or authentication mechanism; common names can be guessed. Public/loopback/
-multicast/unconfigured IP addresses are never adopted for automatic HTTP pushes.
-If DHCP assigns an address outside RFC1918, use the explicit configured URL and
-BLE application management; automatic target adoption intentionally requires a
-private IPv4 address.
+The v2 host rejects legacy op-1 fixed-token authentication and returns HTTP 410
+for old token-based device management/mutations. Historical v1 firmware remains
+available only through explicit legacy HTTP or low-level compatibility calls.
+The native BLE daemon ignores a leftover `PHOTOFRAME_PUSH_TOKEN`; it never falls
+back from a failed saved relationship to that value.
 
 ## Commands
 
-These commands use the process environment's `PHOTOFRAME_PUSH_TOKEN`. They do
-not require Chrome, quota credentials, an HTTP endpoint or a running pusher.
+On macOS, the terminal wrapper uses the installed app identity, privately loads
+the existing configuration and streams BLE command output back to the terminal:
+
+```sh
+alias pp='python3 /absolute/path/ai-quota-frame/deploy/pp.py'
+pp scan
+pp pair --device-id 001122334455 --name "PhotoPainter Mac"
+pp paired
+pp status
+```
+
+The checkout path in the alias must match your computer. The wrapper needs no
+rebuild or firmware update. It uses private temporary output files because
+LaunchServices cannot reliably attach an app to `/dev/stdout` or `/dev/stderr`.
+As with `open -W`, its exit code describes launching/waiting; inspect the BLE
+CLI output and authenticated status to establish the device operation result.
+
+These commands use the saved physical pairing. They do not require Chrome,
+quota credentials, an HTTP endpoint or a running pusher.
 Stop the automatic pusher before deliberate activation/display validation.
 
 ```sh
@@ -106,18 +124,21 @@ and checks authenticated status against that expectation. It reports success
 only when the requested running version or removal is proven; it never repeats
 the mutation. An explicit device error such as busy is returned directly.
 
-The BLE link is not encrypted. The token is never transmitted, and nonces,
+The BLE link is not encrypted. The negotiated root key is never transmitted, and nonces,
 direction-specific HMACs and monotonic sequence numbers protect commands and
 responses from modification and replay. Images, packages and status remain observable.
-Use a strong random device token; do not reuse quota/management/OAuth secrets.
-See the host's [wire protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/docs/ble-protocol.md).
+Physical approval and matching six-digit comparison codes establish ownership;
+quota/management/OAuth credentials never enter that ceremony. See the host's
+[pairing protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/docs/ble-pairing-v2.md)
+and [signed command protocol](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/docs/ble-protocol.md).
 
 ## Image completion and recovery
 
 `ble push` and the background BLE sender validate the complete PNG before radio
 work: at most 5 MiB, 800×480, non-interlaced, opaque exact six colors, valid CRCs
 and no trailing bytes. The host independently validates it through the same app
-decoder and `app_manager_render()` used by HTTP. The app must already be selected;
+decoder and managed display path. v2 HTTP control is retired; its 410 response
+is not a usable image transport. The app must already be selected;
 an image does not switch applications. Existing ABI 1/2 PNG apps need no rebuild.
 
 The sender negotiates image capabilities, creates a random request ID and uploads
@@ -129,7 +150,7 @@ BLE links; the existing single-worker/latest-snapshot queue remains in control.
 
 If reception fails before COMMIT, a later attempt can resend the image. After an
 ambiguous COMMIT, the same sender reconnects and queries the original receipt;
-it does not send another draw command. The host keeps four receipts in RAM per
+it does not send another draw command. The photoframe app keeps four receipts in RAM per
 boot. A changed boot, missing receipt or metadata mismatch permanently rejects
 that image in the current process, requiring inspection before an explicit new
 attempt. This is not a durable exactly-once guarantee across process restarts.
@@ -155,7 +176,7 @@ The build uses `CGO_ENABLED=0`. Linux uses BlueZ/D-Bus. macOS requires a native 
 build, Xcode command-line tools and permission for Bluetooth in System Settings:
 
 ```sh
-GOTOOLCHAIN=go1.26.0 make check
+make check
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/ai-quota-frame.exe ./cmd/ai-quota-frame
 # On macOS:
 CGO_ENABLED=1 go build -o dist/ai-quota-frame ./cmd/ai-quota-frame
@@ -167,18 +188,20 @@ the caller's deadline still returns, while one retained adapter slot prevents
 launching additional native operations until cleanup completes. This avoids an
 unbounded accumulation of blocked scan/connect goroutines.
 
-Local tests cover protocol vectors shared with the C host, wrong token/identity,
+Local tests cover physical-pairing vectors shared with C/OpenSSL/WebCrypto,
+durable candidates, lost approval recovery, revoked binding identities,
+legacy wrong-token/identity regression cases,
 spoofed unsigned or modified responses, replay, package framing/checksums,
 transfer loss, cancellation, explicit activation and frozen status pages. Pusher
 tests cover rediscovery without an immediate repeat, fallback, throttle and
 startup. `make check` runs tests, race tests, vet and a build (native CGO on macOS,
 static elsewhere); rendering
 tests requiring Chrome are skipped when Chrome is absent. Windows cross-build
-passes. Authorized Windows radio tests and their exact results are recorded in
+passes. Pairing v2 remains **尚未实机验证**. Historical authorized Windows radio tests and their exact results are recorded in
 the host's `docs/validation-ble.md`. Mac offline-image validation is recorded in
 [`macos-deployment.md`](macos-deployment.md).
 
-The Windows test completed a 1 MiB package transfer in 554.5 seconds, verified
+The historical v1 Windows test completed a 1 MiB package transfer in 554.5 seconds, verified
 staging through the existing installer, removed the test candidate and preserved
 the original running app. Subsequent authenticated discoveries took 5.2 and
 8.7 seconds. This passed with the device on independent USB power. The same
@@ -187,6 +210,8 @@ temporary selective-suspend comparison; the exact cause remains unresolved.
 The Windows power setting was restored and the existing scheduled pusher resumed
 after validation. These observations are not a long-duration endurance claim.
 
+The following opt-in fixed-token hardware harness is retained for historical
+v1 firmware validation; it is not the v2 pairing acceptance test.
 Device checks are separately compiled with `-tags photopainter_hardware`; normal
 `make check` never opens a radio or displays an image. The opt-in tests require
 the token only through the trusted process environment:

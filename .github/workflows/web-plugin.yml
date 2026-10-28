@@ -1,0 +1,109 @@
+name: Web Bluetooth plugin
+
+on:
+  pull_request:
+    paths:
+      - web/**
+      - plugins/photopainter/**
+      - internal/dashboard/**
+      - internal/frame/**
+      - internal/ble/**
+      - internal/webframe/**
+      - internal/cliproxy/**
+      - internal/usage/**
+      - internal/service/**
+      - internal/quota/**
+      - cmd/web-frame/**
+      - go.mod
+      - go.sum
+      - .github/workflows/web-plugin.yml
+  push:
+    paths:
+      - web/**
+      - plugins/photopainter/**
+      - internal/dashboard/**
+      - internal/frame/**
+      - internal/ble/**
+      - internal/webframe/**
+      - internal/cliproxy/**
+      - internal/usage/**
+      - internal/service/**
+      - internal/quota/**
+      - cmd/web-frame/**
+      - go.mod
+      - go.sum
+      - .github/workflows/web-plugin.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-plugin-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+          install-dependencies: true
+      - run: npm ci --ignore-scripts
+        working-directory: web
+      - run: npm run check
+        working-directory: web
+      - name: Verify shared collector and render parity in Chrome
+        run: node web/tools/check-frame.mjs
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+      - name: Verify plugin interactions with isolated fixtures
+        run: node web/tools/check-ui.mjs
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          PHOTOFRAME_UI_CAPTURE: '0'
+          PHOTOFRAME_UI_OUTPUT: ${{ runner.temp }}/photopainter-ui
+      - name: Embed the verified browser page
+        run: cp web/dist/panel.html web/dist/frame.wasm.gz web/dist/wasm_exec.js plugins/photopainter/
+      - name: Get the pinned Debian 12 native builder
+        run: docker pull golang@sha256:05237276236793ebedaf0b87dab86add9ec9adc66ebef2dbc3107c18254cde1c
+      - name: Test and build Linux amd64 plugin without network access
+        run: |
+          mkdir -p plugins/photopainter/dist
+          docker run --rm --network none \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace/plugins/photopainter \
+            golang@sha256:05237276236793ebedaf0b87dab86add9ec9adc66ebef2dbc3107c18254cde1c \
+            ./build-native.sh
+      - name: Verify C ABI and exact embedded page
+        run: |
+          set -- plugins/photopainter/dist/photopainter-v*.so
+          test "$#" -eq 1
+          python3 plugins/photopainter/verify-native.py "$1" web/dist/panel.html > plugins/photopainter/dist/verification.json
+          cat plugins/photopainter/dist/verification.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: photopainter-linux-amd64-unverified-hardware
+          path: |
+            plugins/photopainter/dist/photopainter-v*.so
+            plugins/photopainter/dist/photopainter-v*.h
+            plugins/photopainter/dist/verification.json
+            plugins/photopainter/README.md
+            web/README.md
+            web/dist/panel.html
+            web/dist/frame.wasm.gz
+            web/dist/wasm_exec.js
+            web/dist/frame-manifest.json

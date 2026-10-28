@@ -64,6 +64,14 @@ func (producer *Producer) Produce(snapshot quota.Snapshot) (Image, error) {
 	return image, nil
 }
 
+// ContentKey exposes the producer's existing visible-content cache identity
+// to the browser client. Rendering preferences belong in the caller's cache
+// key separately; source timestamps and account names retain their existing
+// native deduplication semantics.
+func ContentKey(snapshot quota.Snapshot) ([sha256.Size]byte, error) {
+	return contentKey(snapshot)
+}
+
 func contentKey(snapshot quota.Snapshot) ([sha256.Size]byte, error) {
 	accounts := append([]quota.Account(nil), snapshot.Accounts...)
 	for accountIndex := range accounts {

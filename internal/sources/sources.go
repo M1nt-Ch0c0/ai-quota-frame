@@ -17,11 +17,12 @@ type Clients struct {
 	Identity string
 }
 
-// New authenticates with a Google ID token when a service account is
-// configured, and with the static management keys otherwise.
+// New follows the explicit source authentication mode. Legacy callers that
+// construct Config directly retain the old service-account behavior when no
+// mode has been specified; FromEnv resolves or rejects ambiguous settings.
 func New(c config.Config) (Clients, error) {
 	var result Clients
-	if c.GoogleServiceAccountFile != "" {
+	if c.SourceAuthMode == "google-id-token" || (c.SourceAuthMode == "" && c.GoogleServiceAccountFile != "") {
 		token, err := googleauth.NewIDTokenSource(c.GoogleServiceAccountFile, c.GoogleIDTokenAudience, c.RequestTimeout)
 		if err != nil {
 			return Clients{}, err

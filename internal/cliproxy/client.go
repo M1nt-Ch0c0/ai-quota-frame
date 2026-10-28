@@ -26,6 +26,7 @@ const maxResponseBytes = 4 << 20
 // values.
 type Client struct {
 	baseURL       string
+	origin        string
 	bearer        BearerSource
 	httpClient    *http.Client
 	maxConcurrent int
@@ -83,6 +84,7 @@ func NewClientWithBearer(baseURL string, bearer BearerSource, timeout time.Durat
 	}
 	return &Client{
 		baseURL:       trimmedURL,
+		origin:        parsed.Scheme + "://" + parsed.Host,
 		bearer:        bearer,
 		httpClient:    newHTTPClient(timeout),
 		maxConcurrent: 4,
@@ -374,6 +376,12 @@ func (client *Client) managementJSON(ctx context.Context, method, path string, b
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("User-Agent", "ai-quota-frame/1")
+	if method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions {
+		// Management gateways may require a matching Origin on writes even
+		// for Bearer-authenticated machine clients. Derive it from the already
+		// validated destination; never weaken the server's browser guard.
+		request.Header.Set("Origin", client.origin)
+	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

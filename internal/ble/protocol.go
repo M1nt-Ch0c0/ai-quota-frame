@@ -41,7 +41,7 @@ const (
 
 const MaxPackageSize = 1024 * 1024
 
-var ErrAuthentication = errors.New("BLE response authentication failed; reconnect (token may be wrong or unconfigured)")
+var ErrAuthentication = errors.New("BLE response authentication failed; check the saved pairing and reconnect")
 
 type DeviceInfo struct {
 	Version  byte       `json:"version"`
@@ -52,7 +52,7 @@ type DeviceInfo struct {
 }
 
 func ParseInfo(p []byte) (DeviceInfo, error) {
-	if len(p) != 20 || p[0] != 1 || p[1] > 3 {
+	if len(p) != 20 || (p[0] != 1 && p[0] != 2) || p[1] > 3 {
 		return DeviceInfo{}, errors.New("unsupported BLE discovery record")
 	}
 	return DeviceInfo{p[0], p[1], hex.EncodeToString(p[2:8]), netip.AddrFrom4([4]byte(p[8:12])), hex.EncodeToString(p[12:20])}, nil
@@ -83,6 +83,7 @@ type Client struct {
 	info       DeviceInfo
 	cocPSM     uint16
 	cocVersion uint32
+	bindingID  string
 }
 
 func tag(key []byte, domain string, data []byte) []byte {
@@ -123,6 +124,9 @@ func authenticate(ctx context.Context, link Link, id, token string, random io.Re
 	info, err := ParseInfo(record)
 	if err != nil || info.ID != id {
 		return nil, errors.New("BLE device ID does not match the selected device")
+	}
+	if info.Version != 1 {
+		return nil, ErrNotPaired // v2 never negotiates a fixed token or downgrades.
 	}
 	nonce, err := link.Challenge(ctx)
 	if err != nil || len(nonce) != 32 {
@@ -195,6 +199,8 @@ func (c *Client) command(ctx context.Context, op byte, payload []byte) ([]byte, 
 }
 
 func (c *Client) Info() DeviceInfo { return c.info }
+
+func (c *Client) BindingID() string { return c.bindingID }
 
 // PushURL is only available after mutual authentication. Advertisements alone
 // must never select a destination that will receive the HTTP Bearer token.

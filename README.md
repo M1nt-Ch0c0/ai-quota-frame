@@ -1,8 +1,12 @@
 # AI Quota Frame
 
-当前 main 已包含 **macOS L2CAP CoC 图片发送**（功能提交 `f8a617f`）：设备声明 ABI 2.2 CoC 能力时优先连续传输，旧设备或尚无 CoC 后端的平台继续用原 GATT 路径。2026-10-27 已替换Mac后台，并取得67,509字节/2.477秒的真实CoC传输及显示回执，见 [APP 收图说明](docs/app-ble-images.md)。
+当前源码提供 **按键配对 v2、原生 BLE 发送，以及完整复用原 Go 引擎的 CPM 浏览器插件**。新版配对、长按解绑、重启保持关系和实际刷图 **尚未实机验证**；离线/浏览器 fixture 测试通过不等于设备验收完成。入口与验证范围见 [BLE 指南](docs/ble.md)、[浏览器使用说明](web/README.md)、[共享渲染验证](docs/web-frame-parity.md) 和 [客户端离线验证记录](docs/validation-client-pairing-v2-2026-10-29.md)。
+
+原生 Mac 在支持的设备上优先使用 ABI 2.2 CoC，其他已配对客户端走 GATT。2026-10-27 的 67,509 字节/2.477 秒和显示完成回执属于旧鉴权基线，保留在 [APP 收图历史](docs/app-ble-images.md)，不能用来证明配对 v2 已实机通过。
 
 **仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md)。
+
+**CPM 浏览器相框插件：**[使用与协议验证](web/README.md) · [原生插件构建、安装与回滚](plugins/photopainter/README.md)。页面共用 Go/WASM 数据与画面，通过访问者电脑的 Web Bluetooth/GATT 发送。资源和最小账号投影使用现有 CPA 插件路由，官方 CPM 前端保持原样。浏览器与原生客户端是不同 owner；切换前暂停原 owner，按键重置后在新端配对。
 
 > **AI / 开发者入口：**先阅读 [`AGENTS.md`](AGENTS.md)。空白电脑部署、三仓联调和真机诊断使用 [`develop-photopainter-stack`](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/.agents/skills/develop-photopainter-stack/SKILL.md)。
 
@@ -12,7 +16,7 @@
 
 BLE 图片优先访问 photoframe ABI 2.2 CoC，旧设备/未接入CoC的平台使用APP的GATT兼容服务；应用必须已被选中；不自动切换应用，也不回退 HTTP。旧宿主 PNG 通道实现与回归测试保留。常驻发现、鉴权和应用 OTA 继续由宿主提供。
 
-`ai-quota-frame` 在主机侧读取额度、生成 800×480 的 Spectra 6 六色 PNG，并通过 HTTP 或 BLE 主动推送到 ESP32-S3 PhotoPainter。BLE 模式下，设备发现、推图和应用更新均不需要相框连接 Wi-Fi；电脑采集额度仍需要互联网。设备不轮询主机，不使用相册、WebUI、宿主整机 OTA、Home Assistant 或深睡眠流程。
+`ai-quota-frame` 读取额度和用量、生成 800×480 的 Spectra 6 六色 PNG，再通过已配对 BLE 主动推送到 ESP32-S3 PhotoPainter。设备发现、推图和应用更新不需要相框联网；采集数据需要互联网。HTTP 发送仅用于明确选用旧 v1 固件的历史兼容。设备不轮询主机，也不运行设备 WebUI。
 
 ## 刷写
 
@@ -22,21 +26,25 @@ BLE 图片优先访问 photoframe ABI 2.2 CoC，旧设备/未接入CoC的平台�
 
 ## 推图
 
-复制配置并生成彼此不同的随机令牌：
+复制数据源配置，然后与相框配对一次：
 
 ```bash
 cp .env.example .env
 chmod 600 .env
-openssl rand -hex 32
+make check
+./dist/ai-quota-frame ble scan
+./dist/ai-quota-frame ble pair --device-id 001122334455 --name "PhotoPainter desktop"
 ```
 
-主动推送所需的核心配置如下：
+将示例设备 ID 替换为扫描结果。核对电脑和相框显示的六位配对码，然后短按相框 **GPIO4 功能键** 同意；BOOT 和电源键不参与。关系保存在本机私有目录和设备 NVS，下次连接自动鉴权，不需要生成或输入推图令牌。更换连接方时，长按功能键至少 8 秒并松开；若正在刷新，先封住新操作，再等已开始的刷新完整结束后清除关系。Wi-Fi 和已安装 APP 保留。macOS 应按下文安装应用身份后使用 `pp pair`，不要把裸终端的权限表现当成应用权限已验证。
+
+主动推送所需的核心配置如下；配对完成后设备 ID 自动沿用，也可显式指定：
 
 ```dotenv
 CLIPROXY_BASE_URL=http://127.0.0.1:8317
+SOURCE_AUTH_MODE=management-key
 CLIPROXY_MANAGEMENT_KEY=replace-with-management-key
-PHOTOFRAME_PUSH_URL=http://192.168.1.50/api/push
-PHOTOFRAME_PUSH_TOKEN=replace-with-generated-token
+PHOTOFRAME_PUSH_TRANSPORT=ble
 ```
 
 主机必须安装 Chromium 或 Google Chrome；也可用 `CHROME_BIN` 指向浏览器可执行文件。程序会在启动时检查浏览器是否可用，然后才开始刷新额度和推图。
@@ -51,44 +59,47 @@ set +a
 ./dist/ai-quota-frame
 ```
 
-每次成功的额度刷新都会交给单工作线程处理；队列只保留最新快照。主机生成的图片必须不超过 5 MiB。默认 HTTP 模式以 `Content-Type: image/png` 和独立 Bearer 码发送到完整的 `/api/push` URL，不使用环境代理、不跟随 HTTP 重定向，只有设备返回 `200` 才记为刷屏完成。纯 BLE 配置及完成凭据见下文。
+每次成功的额度刷新都会交给单工作线程处理；队列只保留最新快照。主机生成的图片必须不超过 5 MiB。默认 BLE 模式使用已配对关系，支持时走 CoC，否则使用 GATT；只在收到匹配的签名完成回执后记为刷屏完成。没有配对关系时返回可操作的配对提示，不打开蓝牙连接反复尝试。
 
-刷新失败会立即作废待推送的旧 LIVE 帧，并尽力取消尚未完成的旧请求；失败快照不会推到设备。单次 HTTP 总超时为 11 分钟，覆盖一次刷屏中最多五个串行的 120 秒 BUSY 等待，避免设备已刷完但客户端过早超时后重复刷屏。网络错误、`408`、`409`、`423`、`425`、`429` 和 `5xx` 可以重试，期间仍只保留最新成功快照。渲染错误不进入定时重算，只等下一次成功额度刷新；其他非 `200` 状态（包括 `401`、`413`、`422` 和重定向）会永久拒绝当前 PNG 摘要，图片内容变化后才允许再次尝试。
+刷新失败会立即作废待推送的旧 LIVE 帧，并尽力取消尚未完成的旧请求；失败快照不会推到设备。COMMIT 结果不确定时保留原请求身份，只查询原回执；重置配对、更换绑定或回执丢失都不能触发自动重刷。渲染错误不进入定时重算，只等下一次成功额度刷新。
 
 ## 鉴权
 
-`PHOTOFRAME_PUSH_TOKEN` 只用于设备的 HTTP/BLE 鉴权，须为 32–128 个无空白可打印 ASCII 字节。BLE 使用双向 HMAC 挑战响应，令牌不通过蓝牙发送。启动校验会拒绝它与以下任何已配置密钥相同：
+设备使用 P-256 ECDH、双向承诺和六位比较码建立关系，用户必须在相框上按键同意；客户端先持久化候选密钥，设备成功保存 NVS 后才算绑定。后续连接使用新挑战和已协商密钥进行双向认证，所有现有图片/应用命令继续签名。客户端不会把数据源管理密钥交给设备。
 
-- `CLIPROXY_MANAGEMENT_KEY`
-- `CPAMP_ADMIN_KEY`
+原生客户端与网页各自持有独立关系；从一个客户端换到另一个，需要在设备端重置并重新配对。同一客户端可以保存多台相框。网页密钥为 IndexedDB 中不可导出的 WebCrypto Key，原生密钥使用 `0600` 私有文件；CLI 和诊断 JSON 不返回密钥。
 
-管理 API 也可以放在接受 JWT bearer 的 oauth2-proxy 之后，由网关注入管理密钥。此时设置 `GOOGLE_SERVICE_ACCOUNT_FILE` 与 `GOOGLE_ID_TOKEN_AUDIENCE`（oauth2-proxy 的 client_id），两个 `BASE_URL` 指向网关 HTTPS 地址，主机不再保存管理密钥。程序用服务账号私钥签名断言，向 `oauth2.googleapis.com` 换取一小时有效的 ID Token 并提前 5 分钟刷新；私钥文件只在本机读取，权限应为 0600 并放在仓库之外。网关应仅为该服务账号放行额度采集所需的四个管理路由。
+普通管理密钥接入使用 `SOURCE_AUTH_MODE=management-key`，额度与用量分别使用 `CLIPROXY_MANAGEMENT_KEY`、`CPAMP_ADMIN_KEY`。该模式不会因为保留了 Google 服务账号文件而改用 ID Token。
 
-设备未配置推图码时返回 `503`，缺失或错误码返回 `401`，请求体超过 5 MiB 返回 `413`；这些失败请求不得改变屏幕。主机不会在日志中输出推图码，也不会把 OAuth token、management key 或用量采集密钥发送到相框。
+管理 API 也可以放在接受 JWT bearer 的 oauth2-proxy 之后，由网关注入管理密钥。仅在网关确实提供此能力时使用 `SOURCE_AUTH_MODE=google-id-token`，并设置 `GOOGLE_SERVICE_ACCOUNT_FILE` 与 `GOOGLE_ID_TOKEN_AUDIENCE`（oauth2-proxy 的 client_id），两个 `BASE_URL` 指向网关 HTTPS 地址。程序用服务账号私钥签名断言，向 `oauth2.googleapis.com` 换取一小时有效的 ID Token 并提前 5 分钟刷新；私钥文件只在本机读取，权限应为 0600 并放在仓库之外。网关应仅为该服务账号放行额度采集所需的四个管理路由。未指定模式时兼容单一凭据配置；同时配置 Google 和静态凭据则要求显式选择，不静默覆盖。
+
+当前 `manager.m1ntch0c0.com` 已停用 Google 网关，须使用普通管理密钥。只读的 `ai-quota-frame source-check` 可独立验证额度及用量采集，不启动渲染器、BLE、推图或后台；通过既有可信启动环境运行，输出不含密钥、账号名称或响应正文。故障排查和私下迁移说明见 [数据源鉴权修复](docs/source-auth-diagnostics.md)。
+
+配对 v2 宿主永久拒绝旧固定令牌 BLE 鉴权，并对旧 HTTP 令牌管理/变更入口返回 `410`，原令牌不能绕过物理重置。`PHOTOFRAME_PUSH_TRANSPORT=http` 与 `PHOTOFRAME_PUSH_TOKEN` 仅保留给明确使用旧 v1 固件的历史兼容流程，新安装默认 BLE，后台 BLE 模式会忽略遗留令牌环境值。
 
 不要提交 `.env`、设备密钥、Flash/SD 备份或含密钥的命令输出。相框只应位于受信局域网，禁止把设备的 HTTP 端口映射到公网。
 
 ## BLE 发现、推图与应用安装
 
-相框宿主支持 BLE 图片扩展后，配置：
+完成一次按键配对后，配置：
 
 ```dotenv
 PHOTOFRAME_PUSH_TRANSPORT=ble
-PHOTOFRAME_DEVICE_ID=001122334455
-PHOTOFRAME_PUSH_TOKEN=replace-with-generated-token
+# 可选；省略时沿用最近一次配对成功的设备。
+# PHOTOFRAME_DEVICE_ID=001122334455
 ```
 
-将示例 ID 替换为 `ai-quota-frame ble scan` 查到的设备 ID，令牌使用设备已有的独立令牌。也可以用 `ble bind` 把公开 ID 保存到独立状态文件。BLE 模式不需要 `PHOTOFRAME_PUSH_URL`，不会访问设备 IP 或回退 HTTP；不会改写用户 `.env`。
+`ble pair` 完成协商并保存关系；`ble paired` 查看本机配对摘要，`ble pair-status` 读取设备公开配对状态，`ble forget` 只忘记本机凭据。设备端解绑只能用按键完成。`ble bind`、`ble unbind` 保留为配对/本地忘记的兼容名称。BLE 模式不需要 IP，也不回退 HTTP；这些命令不会改写用户 `.env`。
 
-图片分块传输并校验 SHA-256，由同一个 App Manager 交给当前相框应用。只有经过鉴权的完成凭据确认实体刷新和最终 POWER_OFF 后才算成功。完成回复丢失时只查询原请求的凭据，不重复刷屏；设备重启或凭据丢失时停止该图片的自动重试。凭据保存在 RAM，不保证跨进程重启的去重。链路没有加密，图片和应用包内容可被近距离监听，令牌不会明文传输。
+图片分块传输并校验 SHA-256，由同一个 App Manager 交给当前相框应用。只有签名完成回执确认实体刷新和最终 POWER_OFF 后才算成功。完成回复丢失时只查询原请求，不重复刷屏；设备重启、配对身份变化或回执丢失时停止该图片的自动重试。设备回执保存在有限 RAM 中。协议提供鉴权和完整性，不加密图片及应用包内容。
 
-`ble push --file frame.png` 可单次推图，`ble install --file module.pkg` 暂存应用包，`ble activate --app APP_ID` 显式试运行。保留 `PHOTOFRAME_PUSH_TRANSPORT=http` 时，BLE 只负责发现新 IP，HTTP 推图仍要求地址可达。命令、平台要求和安全边界见 [BLE 指南](docs/ble.md)。
+`ble push --file frame.png` 可单次推图，`ble install --file module.pkg` 暂存应用包，`ble activate --app APP_ID` 显式试运行。命令、平台要求和历史兼容边界见 [BLE 指南](docs/ble.md)。
 
 ## macOS 常驻运行
 
-原生构建、网关配置和离线 BLE 实机结果见 [macOS 部署记录](docs/macos-deployment.md)。
+原生构建、当前鉴权和历史 BLE 实机结果见 [macOS 部署记录](docs/macos-deployment.md)。配对 v2 尚未实机验证。
 
-先配置忽略的 `.env` 并执行 `GOTOOLCHAIN=go1.26.0 make check`，再运行：
+先配置忽略的 `.env`，使用 `go.mod` 要求的 Go 版本或更新版本执行 `make check`，再运行：
 
 ```sh
 python3 deploy/install-macos.py --env-file .env
@@ -103,10 +114,10 @@ macOS 的 `make build`/`make check` 默认启用 CGO，以编译 CoreBluetooth�
 已安装的应用启动器也接受 BLE 命令，并私下加载同一份运行配置。例如通过应用身份发起首次绑定：
 
 ```sh
-open -n -W "$HOME/Applications/PhotoPainter Renderer.app" --args ble bind --device-id 001122334455
+python3 deploy/pp.py pair --device-id 001122334455 --name "PhotoPainter Mac"
 ```
 
-启动器不会将令牌写入参数或应用包。迁移到另一台电脑时，先验证新机器的配置、蓝牙和网络；切换时停止旧机器的自动推图，避免两个服务同时刷新同一块屏幕。
+启动器不会将凭据写入参数或应用包。迁移到另一台电脑或浏览器时，先停止原 owner 的自动推图，再在相框上物理重置并重新配对；不要恢复已经失去绑定的旧 owner。
 
 使用前述 Google ID Token 网关时，不需要源站 SSH 隧道。若采用已有的 SSH loopback 数据源部署，本机 28317、28318 可分别转发至远端 8317、18317。先在本机 SSH 配置中建立 `photopainter-source` 别名，设置真实服务器、登录用户及已有密钥，并核验服务器主机指纹。确认无需交互认证：
 

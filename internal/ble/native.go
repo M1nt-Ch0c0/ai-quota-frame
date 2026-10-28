@@ -248,16 +248,68 @@ func Scan(ctx context.Context) ([]DeviceInfo, error) {
 // WithClient scans by the stable ID, authenticates, runs one bounded operation,
 // then disconnects. It does not read or modify .env or start a listener.
 func WithClient(ctx context.Context, id, token string, job func(context.Context, *Client) error) error {
-	if err := validateToken(token); err != nil {
-		return err
+	bond, bondErr := LoadBond(id)
+	if bondErr != nil && !errors.Is(bondErr, ErrNotPaired) {
+		return bondErr
+	}
+	if bond == nil && token == "" {
+		return ErrNotPaired
+	}
+	if bond == nil {
+		if err := validateToken(token); err != nil {
+			return err
+		}
 	}
 	return withNativeLink(ctx, id, func(link *nativeLink) error {
-		client, err := Authenticate(ctx, link, id, token)
+		record, err := link.Info(ctx)
+		if err != nil {
+			return err
+		}
+		info, err := ParseInfo(record)
+		if err != nil {
+			return err
+		}
+		var client *Client
+		if info.Version == 2 {
+			if bond == nil {
+				return ErrNotPaired
+			}
+			client, err = AuthenticateBond(ctx, link, *bond)
+			if err == nil && bond.Pending {
+				err = confirmBond(*bond)
+			}
+		} else {
+			if bond != nil {
+				return ErrAuthentication
+			}
+			client, err = Authenticate(ctx, link, id, token)
+		}
 		if err != nil {
 			return err
 		}
 		return job(ctx, client)
 	})
+}
+
+func PairDevice(ctx context.Context, id, name string, progress func(PairingProgress)) (*Bond, error) {
+	err := withNativeLink(ctx, id, func(link *nativeLink) error {
+		_, err := PairOnLink(ctx, link, id, name, progress)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return LoadBond(id)
+}
+
+func PairingStatus(ctx context.Context, id string) (PairingInfo, error) {
+	var status PairingInfo
+	err := withNativeLink(ctx, id, func(link *nativeLink) error {
+		var err error
+		status, err = ReadPairingInfo(ctx, link)
+		return err
+	})
+	return status, err
 }
 
 func withNativeLink(ctx context.Context, id string, job func(*nativeLink) error) error {

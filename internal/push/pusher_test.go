@@ -30,8 +30,63 @@ func (function rendererFunc) Render(snapshot quota.Snapshot) ([]byte, error) {
 
 type fetcherFunc func(context.Context) ([]quota.Account, []string, error)
 
+type connectionNeedsAttention struct{}
+
+func (connectionNeedsAttention) Error() string        { return "pairing required" }
+func (connectionNeedsAttention) Permanent() bool      { return true }
+func (connectionNeedsAttention) RetryOnRefresh() bool { return true }
+
 func (function fetcherFunc) Fetch(ctx context.Context) ([]quota.Account, []string, error) {
 	return function(ctx)
+}
+
+func TestPairingPreconditionWaitsForRefreshWithoutRejectingSameImage(t *testing.T) {
+	producer := frame.NewProducer(rendererFunc(func(quota.Snapshot) ([]byte, error) {
+		return []byte("same-valid-frame"), nil
+	}))
+	pusher := New("", "", producer, nil)
+	pusher.retryDelay = 5 * time.Millisecond
+	var paired atomic.Bool
+	calls := make(chan struct{}, 4)
+	pusher.SetSender(func(context.Context, []byte) error {
+		calls <- struct{}{}
+		if !paired.Load() {
+			return connectionNeedsAttention{}
+		}
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); pusher.Run(ctx) }()
+	defer stopPusher(t, cancel, done)
+	snapshot := quota.Snapshot{Accounts: accountsWithRemaining(60)}
+	pusher.Enqueue(snapshot)
+	select {
+	case <-calls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial connection precondition was not checked")
+	}
+	waitForIdle(t, pusher)
+	select {
+	case <-calls:
+		t.Fatal("missing pairing entered a timed retry loop")
+	case <-time.After(50 * time.Millisecond):
+	}
+	paired.Store(true)
+	pusher.Enqueue(snapshot)
+	select {
+	case <-calls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("newly paired client could not send the same image")
+	}
+	waitForIdle(t, pusher)
+	pusher.Enqueue(snapshot)
+	waitForIdle(t, pusher)
+	select {
+	case <-calls:
+		t.Fatal("successful image was not deduplicated")
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 func TestSuccessfulServiceRefreshTriggersBackgroundPush(t *testing.T) {
