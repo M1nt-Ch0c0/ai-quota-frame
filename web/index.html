@@ -74,6 +74,16 @@ body{margin:0;background:var(--bg-primary,#fff);color:var(--text-primary,#1f2329
 .pp-kv dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;overflow-wrap:anywhere}
 .pp-note{margin-top:10px;font-size:12px;color:var(--pp-muted)}
 #forget{margin-top:8px}
+.pp-dev summary{font-size:14px;font-weight:600;color:var(--pp-text)}
+.pp-dev-group{margin-top:12px;padding-top:10px;border-top:1px solid var(--pp-border)}
+.pp-slots{margin-top:10px;display:grid;gap:8px}
+.pp-slot-app{font-weight:500}
+.pp-slot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
+.pp-slot{padding:6px 8px;border:1px solid var(--pp-border);border-radius:8px;font-size:13px}
+.pp-slot[data-current]{border-color:var(--pp-primary);background:var(--pp-tint)}
+.pp-slot small{display:block;color:var(--pp-muted)}
+#dev-status[data-tone='error']{color:var(--pp-danger)}
+#dev-status[data-tone='success']{color:var(--pp-success)}
 .pp-pending{border-color:color-mix(in srgb,var(--pp-warning) 55%,var(--pp-border))}
 .pp-pending-title{font-size:14px;font-weight:600}
 .pp-status-text{font-weight:600;overflow-wrap:anywhere}
@@ -143,11 +153,11 @@ textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMon
 @keyframes pp-sweep{from{background-position:-70% 0}to{background-position:170% 0}}
 @keyframes pp-rise{from{opacity:0;transform:translateY(8px)}}
 @media (prefers-reduced-motion:no-preference){.pp-dialog[open]{animation:pp-rise .18s ease-out}}
-@media (min-width:900px){.pp-main{display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto 1fr;column-gap:20px;align-items:start}.pp-main>*+*{margin-top:0}.pp-stage{grid-column:1;grid-row:1/5}.pp-main>:not(.pp-stage){grid-column:2;margin-bottom:12px}}
+@media (min-width:900px){.pp-main{display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto auto auto 1fr;column-gap:20px;align-items:start}.pp-main>*+*{margin-top:0}.pp-stage{grid-column:1;grid-row:1/7}.pp-main>:not(.pp-stage){grid-column:2;margin-bottom:12px}}
 @media (min-width:1200px){.pp-main{grid-template-columns:minmax(0,1fr) 320px}}
 @media (max-width:899px){.pp-app{padding:12px 12px 0}.pp-head{margin-bottom:12px}.pp-stage{padding:12px}.pp-stage-head{flex-direction:column;align-items:stretch}.pp-tools{display:grid;grid-template-columns:1fr 1fr}#read-cpm{grid-column:1/-1}.pp-transfer{position:sticky;bottom:0;z-index:2;margin:12px -12px 0;border-width:1px 0 0;border-radius:14px 14px 0 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(15,23,42,.08)}}
 @media (max-width:560px){.pp-dialog,.pp-pair{width:100%;max-width:none;max-height:90dvh;margin:auto 0 0;border-width:1px 0 0;border-radius:16px 16px 0 0;padding-bottom:env(safe-area-inset-bottom)}}
-@media (pointer:coarse){.pp-btn,.pp-check,input.pp-input,select.pp-input{min-height:44px}.pp-icon-btn{width:44px;height:44px}}
+@media (pointer:coarse){.pp-btn,.pp-check,input.pp-input,select.pp-input{min-height:44px}.pp-app summary{min-height:44px;padding:10px 0}.pp-icon-btn{width:44px;height:44px}}
 @media (prefers-reduced-motion:reduce){.pp-app *,.pp-app *::before,.pp-app *::after{animation:none!important;transition:none!important}progress:indeterminate,.pp-frame[aria-busy='true']::before{background:repeating-linear-gradient(90deg,var(--pp-primary) 0 6px,var(--pp-track) 6px 12px)}}
 @media (forced-colors:active){.pp-pill::before,.pp-pair-badge,.pp-mark::before,.pp-mark::after{forced-color-adjust:none;background:CanvasText}.pp-btn.is-primary{border-width:2px}progress{border:1px solid CanvasText}}
 .pp-app ::selection{background:var(--pp-tint);color:var(--pp-text)}.pp-input{caret-color:var(--pp-primary)}.pp-app *{scrollbar-color:var(--pp-border) var(--pp-bg)}.pp-app a{text-underline-offset:3px}#device-select{margin-top:10px}.pp-pending-title{color:var(--pp-warning)}
@@ -200,6 +210,7 @@ textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMon
         <div><dt>配对时间</dt><dd id='device-paired-at'></dd></div>
         <div><dt>相框应用</dt><dd id='device-firmware'></dd></div>
       </dl>
+      <details><summary>设备运行诊断</summary><pre id='device-diagnostic' style='white-space:pre-wrap;overflow-wrap:anywhere'>尚未读取运行状态</pre></details>
       <p class='pp-note'>移除后，需在相框上长按功能键 8 秒重置，才能再次配对。</p>
       <button type='button' id='forget' class='pp-btn pp-btn-danger'>移除此相框</button>
     </details>
@@ -211,6 +222,44 @@ textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMon
       <button type='button' id='recover' class='pp-btn'>核对结果</button>
       <button type='button' id='acknowledge' class='pp-btn pp-btn-quiet'>核对画面后清除</button>
     </div>
+  </section>
+  <section id='schedule' class='pp-card pp-schedule' aria-labelledby='schedule-title'>
+    <div class='pp-card-head'><h2 id='schedule-title' class='pp-card-title'>定时推送</h2><span id='schedule-state' class='pp-pill'>已暂停</span></div>
+    <label class='pp-check'><input id='automatic' type='checkbox'>启用定时推送</label>
+    <div class='pp-field'><label for='schedule-minutes'>检查间隔（分钟）</label><input id='schedule-minutes' class='pp-input' type='number' min='1' max='1440' step='1' value='15' inputmode='numeric'></div>
+    <label class='pp-check'><input id='schedule-awake' type='checkbox'>定时期间保持屏幕唤醒</label>
+    <p id='schedule-next' class='pp-detail'>开启后立即检查一次，随后按间隔更新。</p>
+    <p id='schedule-last' class='pp-detail' hidden></p>
+    <p id='schedule-error' class='pp-detail' role='alert' hidden></p>
+    <p class='pp-note'>每次先更新用量，画面变化时发送。页面需保持前台运行；锁屏、切换应用或关闭页面后无法保证定时执行，回到页面后继续。</p>
+  </section>
+  <section id='dev-tools' class='pp-card pp-dev' aria-label='开发者工具' hidden>
+    <details id='dev-details'>
+      <summary>开发者工具</summary>
+      <p class='pp-note'>直接管理相框上的应用槽。每个应用有两个槽：安装写入非当前槽，激活后旧版本成为可回退槽。两个槽都换成同一版本：选择安装包后“上传并激活”，再做一次。</p>
+      <div id='dev-slots' class='pp-slots'><p class='pp-detail'>连接相框后读取槽位。</p></div>
+      <div class='pp-row'><button type='button' id='dev-refresh' class='pp-btn'>读取槽位</button></div>
+      <div class='pp-dev-group'>
+        <input id='dev-file' type='file' accept='.pkg,application/octet-stream' hidden>
+        <div class='pp-row'><button type='button' id='dev-choose' class='pp-btn'>选择安装包</button></div>
+        <p id='dev-package' class='pp-detail' hidden></p>
+        <div class='pp-row'>
+          <button type='button' id='dev-install' class='pp-btn' disabled>上传并激活</button>
+          <button type='button' id='dev-stage' class='pp-btn pp-btn-quiet' disabled>仅上传</button>
+        </div>
+      </div>
+      <div class='pp-dev-group'>
+        <label class='pp-sr' for='dev-app'>应用</label><select id='dev-app' class='pp-input' disabled></select>
+        <div class='pp-row'>
+          <button type='button' id='dev-activate' class='pp-btn' disabled>激活待定版本</button>
+          <button type='button' id='dev-switch' class='pp-btn' disabled>切换到此应用</button>
+          <button type='button' id='dev-rollback' class='pp-btn' disabled>回滚</button>
+          <button type='button' id='dev-remove' class='pp-btn pp-btn-danger' disabled>删除此应用</button>
+        </div>
+      </div>
+      <div class='pp-progress-line'><progress id='dev-progress' max='100' hidden></progress></div>
+      <p id='dev-status' class='pp-detail' role='status'></p>
+    </details>
   </section>
   <section class='pp-card pp-transfer' data-tone='neutral' aria-labelledby='transfer-title'>
     <h2 id='transfer-title' class='pp-sr'>发送状态</h2>
@@ -236,9 +285,11 @@ textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMon
     </div>
     <div class='pp-dialog-body'>
       <div class='pp-field'>
-        <label for='panel-key'>管理密钥</label>
+        <p id='source-auth-info' class='pp-hint'>优先使用 CPM 已保存的登录。</p>
+        <label for='panel-key'>手动管理密钥（可选）</label>
         <input id='panel-key' class='pp-input' type='password' autocomplete='off' autocapitalize='off' spellcheck='false' aria-describedby='panel-key-hint source-error' autofocus>
-        <p id='panel-key-hint' class='pp-hint'>用于读取当前 CPM 的额度与用量。</p>
+        <label><input id='remember-source' type='checkbox' checked> 在此浏览器记住手动配置</label>
+        <p id='panel-key-hint' class='pp-hint'>已登录 CPM 且记住密码时可自动读取，无需重复填写。</p>
         <p id='source-error' class='pp-error' role='alert' hidden></p>
       </div>
       <details class='pp-import'>
@@ -257,7 +308,7 @@ textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMon
       </details>
     </div>
     <div class='pp-dialog-foot'>
-      <button type='button' id='clear-panel-key' class='pp-btn pp-btn-quiet' disabled>清除密钥</button>
+      <button type='button' id='clear-panel-key' class='pp-btn pp-btn-quiet' disabled>清除手动配置</button>
       <span class='pp-spacer'></span>
       <button type='submit' id='source-save' class='pp-btn is-primary' value='save'>保存并读取</button>
     </div>
@@ -304,7 +355,7 @@ textarea.pp-input{min-height:96px;resize:vertical;font-family:ui-monospace,SFMon
           <option value='UTC'>UTC</option>
         </select>
       </div>
-      <div class='pp-field'><label for='refresh-seconds'>更新间隔</label><select id='refresh-seconds' class='pp-input'><option value='60'>1 分钟</option><option value='300'>5 分钟</option><option value='900' selected>15 分钟</option><option value='1800'>30 分钟</option><option value='3600'>1 小时</option></select></div><label class='pp-check'><input id='automatic' type='checkbox'>画面变化时自动发送</label>
+      <div class='pp-field'><label for='refresh-seconds'>更新间隔</label><select id='refresh-seconds' class='pp-input'><option value='60'>1 分钟</option><option value='300'>5 分钟</option><option value='900' selected>15 分钟</option><option value='1800'>30 分钟</option><option value='3600'>1 小时</option></select></div>
     </div>
     <div class='pp-dialog-foot'>
       <span class='pp-spacer'></span>

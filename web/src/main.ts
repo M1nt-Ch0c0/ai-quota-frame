@@ -1,6 +1,8 @@
+import { ScreenAwake } from './screen-awake.ts';
+import { CPM_AUTH_KEY, SOURCE_AUTH_KEY, loadSourceCredential, saveSourceCredential, clearSourceCredential } from './source-auth.ts';
 import { collectSnapshot, DEFAULT_FRAME_OPTIONS, forgetSourceCredentials, frameFingerprint, type FrameOptions, type FrameSnapshot } from './frame-bridge.ts';
 import { renderSnapshot } from './render.ts';
-import { GattLink, HOST_SERVICE } from './ble/gatt-link.ts';
+import { GattLink, HOST_SERVICE, GATT_CONNECT_TIMEOUT } from './ble/gatt-link.ts';
 import { DeviceError, parseInfo, Session, targetFromStatus } from './ble/session.ts';
 import { IndexedBondStore, type BondSummary } from './ble/bonds.ts';
 import { connectPaired, grantedDevices, pairDevice, PairingError, type PairingProgress } from './ble/pairing.ts';
@@ -9,6 +11,7 @@ import { Sender, PendingError, UnknownOutcomeError } from './photoframe/sender.t
 import { IndexedPendingStore, type Pending } from './photoframe/store.ts';
 import { MAX_PNG, validatePNG } from './png.ts';
 import { hex, sha256, sleep } from './bytes.ts';
+import { MAX_PACKAGE, OP_ACTIVATE, OP_REMOVE, OP_ROLLBACK, OP_SWITCH, manage, parsePackage, slotRows, stagePackage, type AppPackage, type SlotRow } from './dev-tools.ts';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => {
   const value = document.getElementById(id);
@@ -30,9 +33,9 @@ const themes = ['classic', 'mint', 'arcade', 'pop', 'mint-skin'] as const;
 const names: Record<string, string> = { classic: '经典', mint: '薄荷', arcade: '街机', pop: '波普', 'mint-skin': '薄荷皮肤' };
 const providerValues = Array.from(document.querySelectorAll<HTMLInputElement>('#providers input')).map(v => v.value);
 const preferencesKey = 'photopainter:display-v2', selectionKey = 'photopainter:selected-v2';
-interface Preferences extends Required<FrameOptions> { automatic: boolean; }
+interface Preferences extends Required<FrameOptions> { automatic: boolean; keepAwake: boolean; }
 function loadPreferences(): Preferences {
-  const defaults = { ...DEFAULT_FRAME_OPTIONS, automatic: false };
+  const defaults = { ...DEFAULT_FRAME_OPTIONS, automatic: false, keepAwake: false };
   try {
     const p = JSON.parse(localStorage.getItem(preferencesKey) || 'null');
     if (!p || !themes.includes(p.theme) || typeof p.providers !== 'string' || !p.providers.length || p.providers.split(',').length > 5 ||
@@ -40,7 +43,7 @@ function loadPreferences(): Preferences {
       !p.providers.split(',').every((v: string) => providerValues.includes(v)) || typeof p.timezone !== 'string' ||
       !Number.isInteger(p.refreshSeconds) || p.refreshSeconds < 60 || p.refreshSeconds > 86400) return defaults;
     new Intl.DateTimeFormat('zh-CN', { timeZone: p.timezone });
-    return { theme: p.theme, providers: p.providers, timezone: p.timezone, refreshSeconds: p.refreshSeconds, automatic: p.automatic === true };
+    return { theme: p.theme, providers: p.providers, timezone: p.timezone, refreshSeconds: p.refreshSeconds, automatic: p.automatic === true, keepAwake: p.keepAwake === true };
   } catch { return defaults; }
 }
 let preferences = loadPreferences(), managementKey = '', selectedID = '', imageURL = '';
@@ -55,8 +58,11 @@ let connection: Connection | undefined, pairing: PairAttempt | undefined;
 let prepared: Image | undefined, snapshot: FrameSnapshot | undefined, queued: FrameSnapshot | undefined;
 let sourceWork: AbortController | undefined, renderWork: AbortController | undefined, transferWork: AbortController | undefined;
 let renderEpoch = 0, transferStage = '', forgetUntil = 0, clearUntil = 0;
-let autoNotBefore = 0;
+let autoNotBefore = 0, nextRefreshAt = 0, lastScheduledPush = '';
+let scheduleIssue = '';
+const screenAwake = new ScreenAwake(updateSchedule);
 let activeSendKey = '';
+let devPackage: AppPackage | undefined, devSlots: SlotRow[] = [], devRemoveUntil = 0;
 let sourceState: 'missing' | 'loading' | 'ready' | 'error' = 'missing';
 let refreshTimer: ReturnType<typeof setTimeout> | undefined, autoTimer: ReturnType<typeof setTimeout> | undefined;
 const supported = isSecureContext && !!navigator.bluetooth && !!crypto.subtle;
@@ -70,6 +76,16 @@ function say(title: string, detail = '', tone = 'neutral') {
   text('status-text', title); text('detail', detail); show('detail', !!detail);
   el('status-text').closest<HTMLElement>('.pp-transfer')!.dataset.tone = tone;
 }
+let lastDeviceIssue = '';
+let reloadSourceAfterAbort = false;
+let sourceCredential: 'cpm' | 'saved' | 'manual' | undefined;
+const sourceAuthContext = () => ({ origin: location.origin, host: location.host, userAgent: navigator.userAgent });
+function restoreSourceCredential() {
+  const saved = loadSourceCredential(localStorage, sourceAuthContext());
+  managementKey = saved?.key || ''; sourceCredential = saved?.source;
+  text('source-auth-info', saved?.source === 'cpm' ? '已使用 CPM 保存的登录，无需重复输入。' : saved ? '已恢复此浏览器保存的数据源。' : '优先使用 CPM 已保存的登录；也可以手动输入并记住。');
+}
+
 function fieldError(id: string, error?: unknown) { text(id, error ? errorText(error) : ''); show(id, !!error); }
 function validateProviderSelection(): boolean {
   const count = document.querySelectorAll('#providers input:checked').length;
@@ -81,6 +97,34 @@ function validateProviderSelection(): boolean {
 function open(id: string, focus: string) { if (!dlg(id).open) { dlg(id).showModal(); el(focus).focus(); } }
 function close(id: string) { if (dlg(id).open) dlg(id).close(); }
 function select(id: string) { selectedID = id; try { localStorage.setItem(selectionKey, id); } catch { /* Optional preference. */ } }
+function persistPreferences() {
+  try { localStorage.setItem(preferencesKey, JSON.stringify(preferences)); fieldError('schedule-error'); }
+  catch { fieldError('schedule-error', new Error('无法保存设置，仅对当前页面生效。')); }
+}
+function syncScheduleControls() {
+  input('automatic').checked = preferences.automatic;
+  input('schedule-awake').checked = preferences.keepAwake;
+  input('schedule-minutes').value = String(preferences.refreshSeconds / 60);
+  const select = el<HTMLSelectElement>('refresh-seconds');
+  for (const option of Array.from(select.querySelectorAll('option[data-custom]'))) option.remove();
+  if (!Array.from(select.options).some(v => v.value === String(preferences.refreshSeconds))) {
+    const option = new Option(String(preferences.refreshSeconds / 60) + ' 分钟', String(preferences.refreshSeconds));
+    option.dataset.custom = 'true'; select.add(option);
+  }
+  select.value = String(preferences.refreshSeconds);
+}
+function updateSchedule() {
+  const enabled = preferences.automatic;
+  text('schedule-state', !enabled ? '已暂停' : pending ? '需核对结果' : document.hidden ? '等待回到页面' : !managementKey ? '等待数据源' : sourceState === 'error' ? '等待数据恢复' : !selected() ? '等待添加相框' : !connection && !granted.has(selected()!.browserID) ? '等待连接相框' : '已开启');
+  const next = !enabled ? '开启后立即检查一次，随后按间隔更新。' : pending ? '先核对上次结果，定时推送不会重复刷新。' : document.hidden ? '回到页面后检查到期任务，不补发过期画面。' : sourceWork ? '正在检查最新用量…' : nextRefreshAt ? '下次检查 ' + time(new Date(nextRefreshAt).toISOString()) : '等待首次检查。';
+  text('schedule-next', next);
+  const detail = [lastScheduledPush ? '最近自动发送 ' + time(lastScheduledPush) : '', scheduleIssue,
+    enabled && preferences.keepAwake ? screenAwake.active ? '屏幕唤醒已开启' : screenAwake.error : ''].filter(Boolean).join(' · ');
+  text('schedule-last', detail); show('schedule-last', !!detail);
+}
+function syncScreenAwake() {
+  void screenAwake.set(preferences.automatic && preferences.keepAwake).catch(error => { fieldError('schedule-error', error); });
+}
 function update() {
   const busy = !!pairing || !!transferWork, saved = selected();
   btn('read-cpm').disabled = !!sourceWork; btn('read-cpm').textContent = sourceWork ? '正在更新…' : '更新画面';
@@ -102,15 +146,25 @@ function update() {
   text('pending-detail', pending ? time(pending.createdAt) + ' 的发送结果尚未确认。' : '');
   el('source-settings').dataset.state = sourceState;
   text('source-state', ({ missing: '未设置', loading: '更新中', ready: '已连接', error: '需检查' })[sourceState]);
-  btn('clear-panel-key').disabled = !managementKey && !input('panel-key').value;
+  btn('clear-panel-key').disabled = false;
   el('device').dataset.state = pairing ? 'connecting' : connection ? (connection.ready ? 'connected' : 'busy') : saved ? 'offline' : 'none';
   show('device-state', !!saved || !!connection || !!pairing);
-  text('device-state', pairing ? '正在连接' : connection ? (connection.ready ? '已连接' : '准备中') : '未连接');
+  text('device-state', pairing ? '正在连接' : connection ? (connection.ready ? '已连接' : '应用未就绪') : '未连接');
   text('device-name', connection?.device.name || saved?.name || '尚未添加相框'); show('device-info', !!saved);
   text('device-id', saved?.deviceID || ''); text('device-fingerprint', saved?.bindingID || '');
   text('device-paired-at', saved?.pairedAt ? time(saved.pairedAt) : '');
+  show('dev-tools', !!saved);
+  const devIdle = !!connection && !busy && !pending, app = el<HTMLSelectElement>('dev-app').value, row = devSlots.find(r => r.id === app);
+  btn('dev-refresh').disabled = !devIdle; btn('dev-choose').disabled = busy;
+  btn('dev-install').disabled = btn('dev-stage').disabled = !devIdle || !devPackage;
+  el<HTMLSelectElement>('dev-app').disabled = !devIdle || !devSlots.length;
+  btn('dev-activate').disabled = !devIdle || !row?.slots.some(s => s.tags.includes('待激活'));
+  btn('dev-switch').disabled = !devIdle || !row || row.running;
+  btn('dev-rollback').disabled = !devIdle || !row?.slots.some(s => s.tags.includes('可回退') || s.tags.includes('待激活'));
+  btn('dev-remove').disabled = !devIdle || !row || row.running;
   for (const id of ['read-cpm', 'connect', 'send', 'recover']) btn(id).classList.remove('is-primary');
   btn(pending ? 'recover' : !prepared ? 'read-cpm' : !connection ? 'connect' : 'send').classList.add('is-primary');
+  updateSchedule();
 }
 async function refreshRecords() {
   try {
@@ -128,9 +182,15 @@ function disconnect() {
   update();
 }
 function invalidate() { prepared = undefined; queued = undefined; if (snapshot) snapshot = { ...snapshot, stale: true }; renderEpoch++; update(); }
-function scheduleRefresh() {
+function scheduleRefresh(reset = true) {
   if (refreshTimer) clearTimeout(refreshTimer);
-  if (managementKey) refreshTimer = setTimeout(() => { void refreshSource(); }, preferences.refreshSeconds * 1000);
+  refreshTimer = undefined;
+  if (!managementKey) { nextRefreshAt = 0; updateSchedule(); return; }
+  if (reset || !nextRefreshAt) nextRefreshAt = Date.now() + preferences.refreshSeconds * 1000;
+  if (!(preferences.automatic && document.hidden)) {
+    refreshTimer = setTimeout(() => { nextRefreshAt = 0; void refreshSource(); }, Math.max(0, nextRefreshAt - Date.now()));
+  }
+  updateSchedule();
 }
 async function installImage(bytes: Uint8Array, at: string, key: string, epoch: number) {
   await validatePNG(bytes); if (epoch !== renderEpoch) return;
@@ -156,7 +216,11 @@ async function prepare(value: FrameSnapshot) {
 }
 async function refreshSource() {
   if (sourceWork) return;
-  if (!managementKey) { open('source-dialog', 'panel-key'); return; }
+  if (!managementKey) {
+    try { restoreSourceCredential(); }
+    catch (error) { open('source-dialog', 'panel-key'); fieldError('source-error', error); return; }
+    if (!managementKey) { open('source-dialog', 'panel-key'); return; }
+  }
   const work = new AbortController(); sourceWork = work; sourceState = 'loading'; update(); fieldError('source-error');
   if (!transferWork) say('正在更新画面');
   try {
@@ -170,7 +234,7 @@ async function refreshSource() {
     if (!next.stale) { close('source-dialog'); input('panel-key').value = ''; input('panel-key').placeholder = '已设置，输入新密钥可替换'; }
   } catch (error) {
     if (!work.signal.aborted) { sourceState = 'error'; invalidate(); fieldError('source-error', error); if (!transferWork) say('更新未完成', errorText(error), 'error'); }
-  } finally { if (sourceWork === work) sourceWork = undefined; update(); scheduleRefresh(); maybeAuto(); }
+  } finally { if (sourceWork === work) sourceWork = undefined; update(); scheduleRefresh(); maybeAuto(); if (reloadSourceAfterAbort) { reloadSourceAfterAbort = false; queueMicrotask(() => { void refreshSource(); }); } }
 }
 function pairProgress(progress: PairingProgress) {
   if (!pairing) return; pairing.stage = progress.stage;
@@ -195,8 +259,12 @@ async function inspectFrame(session: Session, signal: AbortSignal): Promise<bool
   for (;;) {
     try {
       const status = await session.status(signal);
-      text('device-firmware', typeof status.version === 'number' && status.version > 0 ? 'photoframe v' + status.version : '');
-      try { targetFromStatus(status); return true; } catch { return false; }
+      text('device-firmware', typeof status.version === 'number' && status.version > 0 ? 'photoframe v' + status.version : '未加载应用');
+      const keys = ['uptime_ms','reset_reason','cache_bytes','runtime_diagnostic','version','payload_abi','payload_abi_minor','ready','runtime_ready','confirmed','selected','loaded_app','loaded','generation','phase','last_result','last_switch_source','last_switch_target','ble_service_revision','ble_characteristics','ble_service_uuid','apps'];
+      const diagnostic = Object.fromEntries(keys.filter(key => key in status).map(key => [key, status[key]]));
+      text('device-diagnostic', JSON.stringify(diagnostic, null, 2)); renderSlots(status);
+      try { targetFromStatus(status); lastDeviceIssue = ''; return true; }
+      catch (error) { lastDeviceIssue = errorText(error); return false; }
     } catch (error) { if (!(error instanceof DeviceError) || error.code !== 3 || Date.now() >= until) throw error; await sleep(500, signal); }
   }
 }
@@ -216,7 +284,7 @@ function connectDevice(opts: ConnectOptions = {}): Promise<boolean> {
       const device = await chosen; attempt.abort.signal.throwIfAborted(); granted.set(device.id, device);
       if (!preferred || preferred.phase === 'pending' || opts.add) { open('pair-dialog', 'pair-cancel'); pairProgress({ stage: 'negotiating', deviceID: '' }); }
       text('pair-device-name', device.name || 'PhotoPainter 相框'); release = await lockDevice(device.id);
-      link = await GattLink.connect(device, AbortSignal.any([attempt.abort.signal, AbortSignal.timeout(30000)]));
+      link = await GattLink.connect(device, AbortSignal.any([attempt.abort.signal, AbortSignal.timeout(GATT_CONNECT_TIMEOUT)]));
       const info = parseInfo(await link.info(attempt.abort.signal));
       if (!opts.add && preferred && preferred.deviceID !== info.id) throw new Error('请选择原来的相框，或使用“添加”连接另一台。');
       const saved = await bindings.get(info.id);
@@ -230,7 +298,8 @@ function connectDevice(opts: ConnectOptions = {}): Promise<boolean> {
       select(info.id); connection = { device, link, session, release, ready: false }; release = undefined;
       device.addEventListener('gattserverdisconnected', () => { if (connection?.device === device && !transferWork && !pairing) { disconnect(); say('相框已断开', '点击连接即可继续。'); } }, { once: true });
       await refreshRecords(); connection.ready = await inspectFrame(session, attempt.abort.signal);
-      say(connection.ready ? '相框已连接' : '相框应用未就绪', connection.ready ? '' : '点击“打开相框应用”继续。'); return true;
+      scheduleIssue = '';
+      say(connection.ready ? '相框已连接' : '相框应用未就绪', connection.ready ? '' : lastDeviceIssue); return true;
     } catch (error) {
       if (connection) disconnect(); else link?.disconnect(); release?.();
       if (error instanceof DOMException && error.name === 'NotFoundError') { close('pair-dialog'); say('未选择相框'); }
@@ -249,21 +318,35 @@ async function transfer(recover: boolean, automatic = false) {
   activeSendKey = !recover && image ? scope + ':' + image.key : '';
   if (!automatic && activeSendKey) cancelledAutomaticImages.delete(activeSendKey);
   const work = new AbortController(); transferWork = work; transferStage = recover ? 'displaying' : 'uploading'; update();
+  let uploadStarted: number | undefined, uploadSeconds: number | undefined, displayStarted: number | undefined;
   const progress = (stage: 'uploading' | 'displaying' | 'complete', received: number, total: number) => {
     transferStage = stage; const bar = el<HTMLProgressElement>('progress'); show('progress', stage !== 'complete');
     if (stage === 'displaying') bar.removeAttribute('value'); else bar.value = total ? received * 100 / total : 0;
     text('progress-text', stage === 'uploading' ? Math.floor(received * 100 / total) + '%' : '');
-    if (stage === 'complete') say('相框已显示新画面', '完成于 ' + time(new Date().toISOString()), 'success');
-    else say(stage === 'displaying' ? '相框正在刷新' : '正在发送画面'); update();
+    const now = performance.now();
+    if (stage === 'uploading') {
+      uploadStarted ??= now;
+      const seconds = (now - uploadStarted) / 1000;
+      const speed = seconds > 0 ? received / 1024 / seconds : 0;
+      say('正在发送画面', `${(received / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KiB · ${speed.toFixed(1)} KiB/s · ${seconds.toFixed(1)} 秒`);
+    } else if (stage === 'displaying') {
+      if (displayStarted === undefined) { displayStarted = now; if (uploadStarted !== undefined) uploadSeconds = (now - uploadStarted) / 1000; }
+      say('相框正在刷新', uploadSeconds === undefined ? '正在查询原请求的显示结果。' : `上传用时 ${uploadSeconds.toFixed(1)} 秒，等待屏幕刷新完成。`);
+    } else {
+      const timing = uploadSeconds !== undefined && displayStarted !== undefined ? `上传 ${uploadSeconds.toFixed(1)} 秒 · 刷新 ${((now - displayStarted) / 1000).toFixed(1)} 秒 · ` : '';
+      say('相框已显示新画面', timing + '完成于 ' + time(new Date().toISOString()), 'success');
+    }
+    update();
   };
   try {
     if (recover) {
       await sender.recover(current.session, work.signal, progress);
       if (image && recoveryRecord && hex(await sha256(image.bytes)) === recoveryRecord.digest) sent.set(scope, image.key);
     }
-    else { await sender.send(current.session, image!.bytes, image!.at, work.signal, progress); sent.set(scope, image!.key); autoNotBefore = 0; }
+    else { await sender.send(current.session, image!.bytes, image!.at, work.signal, progress); sent.set(scope, image!.key); autoNotBefore = 0; if (automatic) { lastScheduledPush = new Date().toISOString(); scheduleIssue = ''; } }
   } catch (error) {
-    autoNotBefore = Date.now() + 30000;
+    autoNotBefore = Date.now() + (automatic ? preferences.refreshSeconds * 1000 : 30000);
+    if (automatic) scheduleIssue = '上次发送未完成，将在下次检查时重试。';
     if (error instanceof UnknownOutcomeError) say('发送结果需要核对', '请先查看相框画面，再处理这条记录。', 'error');
     else if (error instanceof PendingError) say('发送结果待确认', '重新连接后可核对原结果。');
     else if (work.signal.aborted) say('已停止等待', '可重新连接核对结果。');
@@ -277,13 +360,15 @@ async function transfer(recover: boolean, automatic = false) {
 }
 function maybeAuto() {
   if (autoTimer) clearTimeout(autoTimer);
-  if (!preferences.automatic || !prepared || snapshot?.stale || pending || sourceWork || renderWork || pairing || transferWork || !storageReady) return;
+  if (!preferences.automatic || document.hidden || !managementKey || sourceState !== 'ready' || !snapshot || !prepared || snapshot.stale || pending || sourceWork || renderWork || pairing || transferWork || !storageReady) return;
   const saved = selected();
   if (saved && sent.get(saved.deviceID + ':' + saved.bindingID) === prepared.key) return;
   if (saved && cancelledAutomaticImages.has(saved.deviceID + ':' + saved.bindingID + ':' + prepared.key)) return;
   autoTimer = setTimeout(() => { void (async () => {
-    if (!preferences.automatic || !prepared || pending || transferWork || pairing) return;
-    if (!connection && !await connectDevice({ quiet: true })) return;
+    if (!preferences.automatic || document.hidden || !managementKey || sourceState !== 'ready' || !snapshot || snapshot.stale || !prepared || pending || sourceWork || renderWork || transferWork || pairing) return;
+    if (!connection && !await connectDevice({ quiet: true })) { scheduleIssue = '尚未连接相框，请点击连接；之后可自动重连。'; updateSchedule(); return; }
+    // Reconnection yields to the user: a pause or hidden page must still win.
+    if (!preferences.automatic || document.hidden || !managementKey || sourceState !== 'ready' || !snapshot || snapshot.stale || !prepared || pending || sourceWork || renderWork || transferWork || pairing) return;
     if (connection?.ready && prepared && sent.get(connection.session.info.id + ':' + connection.session.bindingID) !== prepared.key) await transfer(false, true);
   })(); }, Math.max(0, autoNotBefore - Date.now()));
 }
@@ -310,14 +395,99 @@ btn('cancel').onclick = () => {
 };
 btn('prepare-frame').onclick = async () => {
   if (!connection || pairing || transferWork) return;
-  const current = connection, work = new AbortController(); transferWork = work; update(); say('正在打开相框应用');
+  const current = connection, work = new AbortController(); let recheck = false; transferWork = work; update(); say('正在打开相框应用');
   try {
     const app = new Uint8Array(32); app.set(new TextEncoder().encode('photoframe'));
     try { await current.session.busyCommand(10, app, AbortSignal.any([work.signal, AbortSignal.timeout(11 * 60 * 1000)]), true); }
-    catch { disconnect(); throw new Error('启动结果待核对。重新连接后读取状态即可。'); }
-    current.ready = await inspectFrame(current.session, work.signal); say(current.ready ? '相框已就绪' : '相框应用未就绪');
+    catch (error) {
+      if (error instanceof DeviceError) throw error;
+      disconnect(); recheck = true; throw new Error('连接已中断，正在重新连接并核对启动结果。');
+    }
+    current.ready = await inspectFrame(current.session, work.signal); say(current.ready ? '相框已就绪' : '相框应用未就绪', current.ready ? '' : lastDeviceIssue);
   } catch (error) { say('暂未确认相框状态', errorText(error), 'error'); }
   finally { transferWork = undefined; update(); }
+  // A lost SWITCH reply must never cause a second SWITCH. Reauthenticate and
+  // read the actual state using the existing bond only.
+  if (recheck && !await connectDevice({ quiet: true })) say('启动结果待核对', '请重新连接相框；不会重复发送启动指令。', 'error');
+};
+function devSay(message: string, tone = 'neutral') { text('dev-status', message); el('dev-status').dataset.tone = tone; }
+function renderSlots(status: Record<string, unknown>) {
+  devSlots = slotRows(status);
+  const list = el('dev-slots'); list.replaceChildren();
+  for (const row of devSlots) {
+    const item = document.createElement('div'), name = document.createElement('p'), grid = document.createElement('div');
+    name.className = 'pp-slot-app'; name.textContent = row.id + (row.running ? '（运行中）' : '') + (row.trial ? ' · 试运行' : '');
+    grid.className = 'pp-slot-grid';
+    row.slots.forEach((slot, index) => {
+      const cell = document.createElement('div'), tags = document.createElement('small');
+      cell.className = 'pp-slot'; cell.toggleAttribute('data-current', slot.tags.includes('当前'));
+      cell.textContent = (index ? 'B 槽 · ' : 'A 槽 · ') + (slot.version === undefined ? '空' : 'v' + slot.version);
+      tags.textContent = slot.tags.join(' · ') || '—'; cell.append(tags); grid.append(cell);
+    });
+    item.append(name, grid); list.append(item);
+  }
+  if (!devSlots.length) { const empty = document.createElement('p'); empty.className = 'pp-detail'; empty.textContent = '相框上没有已安装的应用。'; list.append(empty); }
+  const picker = el<HTMLSelectElement>('dev-app'), previous = picker.value; picker.replaceChildren();
+  for (const row of devSlots) picker.add(new Option(row.id, row.id));
+  picker.value = devSlots.some(r => r.id === previous) ? previous : devSlots.find(r => r.running)?.id || devSlots[0]?.id || '';
+}
+// Mutations are sent once. A transport loss after sending reconnects with the
+// saved bond and only reads the signed status; the command is never repeated.
+async function devRun(label: string, work: (session: Session, signal: AbortSignal) => Promise<string>) {
+  if (!connection || pairing || transferWork || pending) return;
+  const current = connection, job = new AbortController(); let recheck = false;
+  transferWork = job; update(); devSay(label + '…');
+  try {
+    const done = await work(current.session, job.signal);
+    current.ready = await inspectFrame(current.session, job.signal);
+    devSay(done, 'success');
+  } catch (error) {
+    if (!(error instanceof DeviceError) && !job.signal.aborted) { disconnect(); recheck = true; devSay('连接中断，正在重新连接核对结果，不会重复发送指令。', 'error'); }
+    else devSay(label + '未完成：' + errorText(error), 'error');
+  } finally { show('dev-progress', false); transferWork = undefined; update(); }
+  if (recheck) devSay(await connectDevice({ quiet: true }) ? '已重新连接，请按上方槽位核对结果。' : '结果待核对：请重新连接相框后读取槽位。', 'error');
+}
+const longSignal = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.timeout(11 * 60 * 1000)]);
+function devInstall(activate: boolean) {
+  const pkg = devPackage; if (!pkg) return;
+  void devRun(activate ? '上传并激活' : '上传', async (session, signal) => {
+    const bar = el<HTMLProgressElement>('dev-progress'); bar.value = 0; show('dev-progress', true);
+    await stagePackage(session, pkg, signal, (sent, total) => { bar.value = sent * 100 / total; devSay(`正在上传 ${(sent / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KiB`); });
+    if (!activate) return `${pkg.app} v${pkg.version} 已写入备用槽，尚未激活。`;
+    bar.removeAttribute('value'); devSay('正在激活，应用会重新启动…');
+    await manage(session, OP_ACTIVATE, pkg.app, longSignal(signal));
+    return `${pkg.app} v${pkg.version} 已激活。`;
+  });
+}
+function devManage(op: number, label: string) {
+  const app = el<HTMLSelectElement>('dev-app').value; if (!app) return;
+  void devRun(label, async (session, signal) => {
+    el<HTMLProgressElement>('dev-progress').removeAttribute('value'); show('dev-progress', true);
+    await manage(session, op, app, longSignal(signal)); return `${app}：${label}完成。`;
+  });
+}
+btn('dev-refresh').onclick = () => { void devRun('读取槽位', async () => '已读取槽位。'); };
+btn('dev-choose').onclick = () => input('dev-file').click();
+input('dev-file').onchange = async () => {
+  const file = input('dev-file').files?.[0]; input('dev-file').value = ''; if (!file) return;
+  devPackage = undefined; show('dev-package', false);
+  try {
+    if (file.size > MAX_PACKAGE) throw new Error('安装包超过 1 MiB 槽容量');
+    devPackage = await parsePackage(new Uint8Array(await file.arrayBuffer()));
+    text('dev-package', `${file.name}：${devPackage.app} v${devPackage.version} · ${(devPackage.bytes.length / 1024).toFixed(1)} KiB · SHA-256 ${devPackage.digest.slice(0, 12)}…`);
+    show('dev-package', true); devSay('');
+  } catch (error) { devSay(errorText(error), 'error'); }
+  update();
+};
+btn('dev-install').onclick = () => devInstall(true);
+btn('dev-stage').onclick = () => devInstall(false);
+el<HTMLSelectElement>('dev-app').onchange = () => { devRemoveUntil = 0; btn('dev-remove').textContent = '删除此应用'; update(); };
+btn('dev-activate').onclick = () => devManage(OP_ACTIVATE, '激活');
+btn('dev-switch').onclick = () => devManage(OP_SWITCH, '切换');
+btn('dev-rollback').onclick = () => devManage(OP_ROLLBACK, '回滚');
+btn('dev-remove').onclick = () => {
+  if (Date.now() > devRemoveUntil) { devRemoveUntil = Date.now() + 5000; btn('dev-remove').textContent = '确认删除 ' + el<HTMLSelectElement>('dev-app').value; return; }
+  devRemoveUntil = 0; btn('dev-remove').textContent = '删除此应用'; devManage(OP_REMOVE, '删除');
 };
 btn('forget').onclick = async () => {
   const bond = selected(); if (!bond || connection || pairing || transferWork) return;
@@ -339,11 +509,29 @@ btn('read-cpm').onclick = () => { void refreshSource(); };
 btn('source-settings').onclick = () => { fieldError('source-error'); open('source-dialog', 'panel-key'); };
 btn('source-close').onclick = () => close('source-dialog');
 dlg('source-dialog').querySelector('form')!.addEventListener('submit', event => {
-  event.preventDefault(); const value = input('panel-key').value.trim(); if (value) managementKey = value;
-  if (!managementKey) { fieldError('source-error', new Error('请输入管理密钥。')); return; } void refreshSource();
+  event.preventDefault();
+  try {
+    const value = input('panel-key').value.trim();
+    if (value) {
+      if (input('remember-source').checked) saveSourceCredential(localStorage, sourceAuthContext(), value);
+      else clearSourceCredential(localStorage);
+      managementKey = value; sourceCredential = 'manual';
+    } else if (!managementKey) restoreSourceCredential();
+    else if (sourceCredential !== 'cpm') {
+      if (input('remember-source').checked) saveSourceCredential(localStorage, sourceAuthContext(), managementKey);
+      else clearSourceCredential(localStorage);
+    }
+    if (!managementKey) throw new Error('请先在 CPM 登录并记住密码，或在这里输入管理密钥。');
+    void refreshSource();
+  } catch (error) { fieldError('source-error', error); }
 });
 input('panel-key').oninput = update;
-btn('clear-panel-key').onclick = () => { sourceWork?.abort(); managementKey = ''; sourceState = 'missing'; input('panel-key').value = ''; input('panel-key').placeholder = ''; forgetSourceCredentials(); invalidate(); scheduleRefresh(); update(); };
+btn('clear-panel-key').onclick = () => {
+  try { clearSourceCredential(localStorage); }
+  catch (error) { fieldError('source-error', error); return; }
+  sourceWork?.abort(); managementKey = ''; sourceCredential = undefined; sourceState = 'missing'; input('panel-key').value = ''; input('panel-key').placeholder = ''; forgetSourceCredentials(); invalidate(); scheduleRefresh(); update();
+  text('source-auth-info', '已清除本插件保存的配置；CPM 的登录保持不变。');
+};
 btn('view-settings').onclick = () => {
   el<HTMLSelectElement>('theme').value = preferences.theme; el<HTMLSelectElement>('timezone').value = preferences.timezone;
   el<HTMLSelectElement>('refresh-seconds').value = String(preferences.refreshSeconds); input('automatic').checked = preferences.automatic;
@@ -356,10 +544,30 @@ el('providers').onchange = validateProviderSelection;
 dlg('settings-dialog').querySelector('form')!.addEventListener('submit', event => {
   event.preventDefault(); if (!validateProviderSelection()) return;
   const providers = Array.from(document.querySelectorAll<HTMLInputElement>('#providers input:checked')).map(v => v.value).join(',');
-  preferences = { theme: el<HTMLSelectElement>('theme').value as Preferences['theme'], providers, timezone: el<HTMLSelectElement>('timezone').value, refreshSeconds: Number(el<HTMLSelectElement>('refresh-seconds').value), automatic: input('automatic').checked };
-  try { localStorage.setItem(preferencesKey, JSON.stringify(preferences)); } catch { /* Keep this page's settings. */ }
+  preferences = { theme: el<HTMLSelectElement>('theme').value as Preferences['theme'], providers, timezone: el<HTMLSelectElement>('timezone').value, refreshSeconds: Number(el<HTMLSelectElement>('refresh-seconds').value), automatic: input('automatic').checked, keepAwake: input('schedule-awake').checked };
+  persistPreferences(); syncScheduleControls(); syncScreenAwake();
   close('settings-dialog'); scheduleRefresh(); if (snapshot) void prepare(snapshot).then(maybeAuto).catch(() => {});
 });
+syncScheduleControls();
+input('schedule-minutes').onchange = () => {
+  const minutes = Number(input('schedule-minutes').value);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { fieldError('schedule-error', new Error('请输入 1–1440 的整数分钟。')); return; }
+  preferences.refreshSeconds = minutes * 60; persistPreferences(); syncScheduleControls(); scheduleRefresh();
+};
+input('schedule-awake').onchange = () => { preferences.keepAwake = input('schedule-awake').checked; persistPreferences(); syncScreenAwake(); updateSchedule(); };
+input('automatic').onchange = () => {
+  preferences.automatic = input('automatic').checked; scheduleIssue = ''; autoNotBefore = 0;
+  persistPreferences(); syncScreenAwake();
+  if (!preferences.automatic) { if (autoTimer) clearTimeout(autoTimer); updateSchedule(); return; }
+  // Open the device picker while the checkbox's user activation is live.
+  const connected = connection?.ready ? Promise.resolve(true) : connectDevice();
+  void connected.then(async ok => {
+    if (!preferences.automatic) return;
+    if (!ok) { scheduleIssue = '请先连接相框，定时设置已保留。'; updateSchedule(); return; }
+    await refreshSource(); maybeAuto();
+  }).catch(error => { scheduleIssue = errorText(error); updateSchedule(); });
+};
+document.addEventListener('visibilitychange', () => { syncScreenAwake(); scheduleRefresh(false); if (!document.hidden) maybeAuto(); });
 btn('download').onclick = () => { if (prepared && imageURL) { const a = document.createElement('a'); a.href = imageURL; a.download = 'photopainter.png'; a.click(); } };
 el<HTMLTextAreaElement>('snapshot-json').oninput = update;
 btn('choose-json').onclick = () => input('snapshot-file').click();
@@ -378,10 +586,29 @@ input('file').onchange = async () => {
 };
 window.addEventListener('pagehide', () => {
   sourceWork?.abort(); renderWork?.abort(); pairing?.abort.abort(); transferWork?.abort(); disconnect();
+  void screenAwake.set(false).catch(error => { fieldError('schedule-error', error); });
   managementKey = ''; sourceState = 'missing'; input('panel-key').value = ''; forgetSourceCredentials();
   if (refreshTimer) clearTimeout(refreshTimer); if (autoTimer) clearTimeout(autoTimer);
 });
-window.addEventListener('pageshow', () => { void refreshRecords(); });
+window.addEventListener('pageshow', event => {
+  void refreshRecords();
+  syncScreenAwake();
+  if (event.persisted) void refreshSource();
+});
+window.addEventListener('storage', event => {
+  if (event.key !== CPM_AUTH_KEY && event.key !== SOURCE_AUTH_KEY && event.key !== null) return;
+  sourceWork?.abort(); managementKey = ''; sourceState = 'missing'; forgetSourceCredentials(); invalidate(); scheduleRefresh();
+  try {
+    const previous = sourceCredential; restoreSourceCredential();
+    if (previous === 'cpm' && sourceCredential !== 'cpm') { managementKey = ''; sourceCredential = undefined; }
+    reloadSourceAfterAbort = !!managementKey && !!sourceWork;
+    if (managementKey && !sourceWork) void refreshSource();
+  } catch (error) { sourceState = 'error'; fieldError('source-error', error); }
+  update();
+});
 if (!supported) say('此浏览器无法连接相框', '请使用支持网页蓝牙的 Chrome 打开 HTTPS 页面。');
 void (async () => { await refreshRecords(); try { for (const device of await grantedDevices()) granted.set(device.id, device); } catch { /* Picker still available. */ } update(); })();
 update();
+
+try { restoreSourceCredential(); if (managementKey) void refreshSource(); }
+catch (error) { sourceState = 'error'; fieldError('source-error', error); update(); }

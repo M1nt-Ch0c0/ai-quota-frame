@@ -7,9 +7,10 @@ const device = new EventTarget();
 Object.assign(device, { id: browserID, name: 'PhotoPainter · UI fixture' });
 const fixture = globalThis.__photoPainterUIFixture = {
   simulated: true, pickerCalls: 0, pairCalls: 0, reconnectCalls: 0,
-  sends: [], pendingPair: undefined, pendingSend: undefined,
+  sends: [], blockReconnect: false, pendingReconnect: undefined, pendingPair: undefined, pendingSend: undefined,
   approvePair() { this.pendingPair?.resolve(); },
   expirePair() { this.pendingPair?.reject(new PairingError('expired', '配对请求已过期，请重新发起')); },
+  finishReconnect() { this.pendingReconnect?.resolve(); },
   finishSend() { this.pendingSend?.resolve(); },
 };
 Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: {
@@ -22,6 +23,7 @@ label.textContent = 'LOCAL UI TEST · PAIRING / TRANSFER SIMULATED';
 label.style.cssText = 'position:fixed;right:6px;top:2px;z-index:2147483647;padding:2px 5px;background:#fff;color:#334155;border:1px solid #94a3b8;border-radius:3px;font:9px/1.4 ui-monospace,monospace;pointer-events:none';
 document.body.append(label);
 
+export const GATT_CONNECT_TIMEOUT = 120000;
 export const HOST_SERVICE = 'a4fe100015364c88a2ce32ecdaac0471';
 export class GattLink {
   static async connect() { return new GattLink(); }
@@ -35,7 +37,7 @@ const session = () => ({
   info: { id: deviceID, version: 2 }, bindingID,
   disconnect() {},
   async status() { return {
-    version: 20, loaded_app: 1, apps: [{ id: 'photoframe', bank: 1 }],
+    version: 21, loaded_app: 1, loaded: 0, apps: [{ id: 'photoframe', bank: 1, active: 0, previous: 1, pending: -1, trial: 0, versions: [21, 20] }],
     runtime_ready: true, generation: 1, ble_service_revision: 1,
     ble_characteristics: 2, ble_service_uuid: 'a4fe200015364c88a2ce32ecdaac0471',
   }; },
@@ -48,7 +50,14 @@ function deferred(signal) {
   return { resolve, reject, promise: promise.finally(() => signal.removeEventListener('abort', abort)) };
 }
 export async function grantedDevices() { return [device]; }
-export async function connectPaired() { fixture.reconnectCalls++; return session(); }
+export async function connectPaired(_link, _bond, _store, signal) {
+  fixture.reconnectCalls++;
+  if (fixture.blockReconnect) {
+    const gate=deferred(signal ?? new AbortController().signal);fixture.pendingReconnect=gate;
+    try { await gate.promise; } finally { fixture.pendingReconnect=undefined; }
+  }
+  return session();
+}
 export async function pairDevice(_link, options, store, signal, progress, cancelSignal) {
   fixture.pairCalls++;
   if ((await store.get(deviceID))?.phase === 'paired') return connectPaired();

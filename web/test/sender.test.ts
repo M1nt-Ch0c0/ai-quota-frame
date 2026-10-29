@@ -14,13 +14,13 @@ class MemoryStore implements PendingStore {
 }
 class FakeClient {
   bindingID?: string;
-  info={id:'000102030405'};generation=7;revision=9;commands:number[]=[];size=0;received=0;digest=new Uint8Array(32);id=new Uint8Array(16);last=0;state=1;dropCommit=false;changeDigest=false;missing=false;store?:MemoryStore;
+  maxCommand=128;info={id:'000102030405'};generation=7;revision=9;commands:number[]=[];size=0;received=0;digest=new Uint8Array(32);id=new Uint8Array(16);last=0;state=1;dropCommit=false;changeDigest=false;missing=false;store?:MemoryStore;
   async target(){return {generation:this.generation,revision:this.revision};}
   async busyCommand(op:number,payload:Uint8Array){
     assert.equal(view(payload).getUint32(0,true),this.generation);assert.equal(view(payload).getUint32(4,true),this.revision);
     if(op===14){const cmd=payload.subarray(12);this.last=cmd[1];this.commands.push(this.last);this.id=cmd.slice(2,18);
       if(this.last===1){this.size=view(cmd).getUint32(18,true);this.digest=cmd.slice(22);this.received=0;this.state=1;}
-      else if(this.last===2){assert.equal(view(cmd).getUint32(18,true),this.received);assert.ok(cmd.length<=128);this.received+=cmd.length-22;}
+      else if(this.last===2){assert.equal(view(cmd).getUint32(18,true),this.received);assert.ok(cmd.length<=this.maxCommand);this.received+=cmd.length-22;}
       else if(this.last===3){assert.ok(this.store?.pending,'COMMIT must follow durable store');this.state=3;if(this.dropCommit){this.dropCommit=false;throw new Error('COMMIT response lost');}}
       else if(this.last===4)this.state=5;
       else if(this.last===5&&this.missing)this.state=6;
@@ -60,4 +60,28 @@ test('physical re-pairing cannot query or redraw an earlier owner transaction',a
   client.bindingID='bb'.repeat(16);const count=client.commands.length;
   await assert.rejects(sender.recover(client,signal(),()=>{}),UnknownOutcomeError);
   assert.equal(client.commands.length,count);assert.ok(store.pending);
+});
+
+test('generic message route batches DATA while preserving COMMIT durability and QUERY recovery',async()=>{
+  const {store,client,sender}=fixture();client.maxCommand=4047;
+  const legacy=client.busyCommand.bind(client);let channelCalls=0;
+  const messageClient={...client,info:client.info,
+    target:client.target.bind(client),
+    busyCommand:async()=>{throw new Error('No legacy business commands allowed');},
+    openChannel:async(service:Uint8Array,generation:number)=>{
+      assert.equal(Buffer.from(service).toString('hex'),'a4fe200015364c88a2ce32ecdaac0471');assert.equal(generation,7);
+      return {maxMessageBytes:4047,exchange:async(message:Uint8Array)=>{
+        channelCalls++;const target=concat(u32(7),u32(9));
+        await legacy(14,concat(target,u32(0),message));return legacy(13,concat(target,u32(1)));
+      }};
+    }
+  };
+  client.dropCommit=true;
+  await assert.rejects(sender.send(messageClient,validPNG,at(),signal(),()=>{}),PendingError);
+  assert.ok(store.pending);assert.equal(client.commands.filter(n=>n===2).length,Math.ceil(validPNG.length/4025));
+  assert.equal(channelCalls,Math.ceil(validPNG.length/4025)+2);
+  const before=client.commands.length;
+  await new Sender(store).recover(messageClient,signal(),()=>{});
+  assert.deepEqual(client.commands.slice(before),[5]);assert.equal(client.commands.filter(n=>n===3).length,1);
+  assert.equal(store.pending,undefined);
 });

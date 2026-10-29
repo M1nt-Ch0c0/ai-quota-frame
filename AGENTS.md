@@ -1,6 +1,6 @@
 # AI quota frame agent guide
 
-**Current source baseline (2026-10-29):** Physical pairing v2 replaces manual BLE tokens; browser and native clients share the original Go collection/rendering implementation through Go/WASM. **尚未实机验证**: the new pairing, reset, reboot persistence and image path still need the morning hardware acceptance. Historical ABI 2.2 CoC/photoframe v20 receipts do not validate this new firmware. The SwiftUI console remains in `photopainter-console`; source and evidence are tracked in the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md).
+**Current source baseline (2026-10-29):** plugin 0.3.2 shares the original Go/WASM renderer and uses saved physical-pairing v2 with ABI 2.3 GATT messages. Phone upload/completion and user visual confirmation passed; foreground scheduling has a real timer tick and automatic completion receipt; 0.3.2 adds a collapsed developer tool for application slot management. Fresh-pair/reset and native cross-platform acceptance are separate. See the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md) and [phone evidence](docs/validation-gatt-capacity-2026-10-29.md).
 
 Read this file before changing the PC-side service. For blank-machine setup, cross-repository integration, deployment, or hardware diagnosis, also read the complete project Skill in the sibling host checkout: `../photopainter-host/.agents/skills/develop-photopainter-stack/SKILL.md`.
 

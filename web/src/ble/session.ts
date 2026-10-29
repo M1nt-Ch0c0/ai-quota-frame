@@ -2,6 +2,10 @@ import { check, concat, deadline, equal, hex, sleep, u32, utf8, view } from '../
 import type { Link } from './gatt-link.ts';
 import type { StoredBond } from './bonds.ts';
 export interface DeviceInfo { version: number; id: string; wifiState: number; ip: string; }
+export interface MessageChannel {
+  readonly maxMessageBytes: number;
+  exchange(message: Uint8Array, signal: AbortSignal, long?: boolean): Promise<Uint8Array>;
+}
 export interface Target { generation: number; revision: number; }
 export class DeviceError extends Error {
   readonly code: number;
@@ -20,6 +24,7 @@ export class Session {
   private sequence = 0;
   private dead = false;
   private running = false;
+  private appMinor = 0;
   readonly link: Link;
   private readonly key: Uint8Array;
   readonly info: DeviceInfo;
@@ -75,7 +80,7 @@ export class Session {
   }
   async command(op: number, payload: Uint8Array, signal: AbortSignal, long = false): Promise<Uint8Array> {
     check(signal);
-    if (this.dead || this.sequence === 0xffffffff || payload.length > 475) throw new Error('蓝牙会话已失效，请重新连接');
+    if (this.dead || this.sequence === 0xffffffff || payload.length > (op === 26 ? (this.link.maxRequestBytes ?? 512) - 37 : 475)) throw new Error('蓝牙会话已失效，请重新连接');
     if (this.running) throw new Error('同一会话不能并发请求');
     this.running = true;
     try {
@@ -109,7 +114,27 @@ export class Session {
       }
     }
   }
-  async target(signal: AbortSignal): Promise<Target> { return targetFromStatus(await this.status(signal)); }
+  async target(signal: AbortSignal): Promise<Target> {
+    const state = await this.status(signal);
+    this.appMinor = typeof state.payload_abi_minor === 'number' ? state.payload_abi_minor : 0;
+    return targetFromStatus(state);
+  }
+  async openChannel(service: Uint8Array, generation: number, signal: AbortSignal): Promise<MessageChannel | undefined> {
+    if (this.appMinor < 3) return undefined; // Explicit old APP capability, not an I/O fallback.
+    if (service.length !== 16 || this.link.maxRequestBytes !== 4096) throw new Error('相框应用要求通用消息传输，请更新固件和客户端');
+    const caps = await this.busyCommand(24, new Uint8Array(), signal);
+    if (caps.length !== 32 || view(caps).getUint32(0,true) !== generation || !equal(caps.subarray(16),service)) throw new Error('相框消息服务身份或应用代次不匹配');
+    const revision = view(caps).getUint32(4,true), maxMessageBytes = view(caps).getUint32(8,true), replyBytes = view(caps).getUint32(12,true);
+    if (!revision || maxMessageBytes < 54 || maxMessageBytes > 4047 || replyBytes < 64 || replyBytes > 256) throw new Error('相框消息服务容量无效');
+    const target = concat(u32(generation),u32(revision));
+    const opened = await this.busyCommand(25,target,signal);
+    if (opened.length !== 4 || !view(opened).getUint32(0,true)) throw new Error('相框消息通道未打开');
+    const header = concat(target,opened);
+    return { maxMessageBytes, exchange: (message, signal, long = false) => {
+      if (!message.length || message.length > maxMessageBytes) throw new Error('应用消息超出通道容量');
+      return this.busyCommand(26,concat(header,message),signal,long);
+    } };
+  }
   disconnect() { this.dead = true; this.link.disconnect(); }
 }
 function hexBytes(value: string): Uint8Array {
@@ -120,9 +145,14 @@ export function targetFromStatus(state: Record<string, unknown>): Target {
   const integer = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= 0xffffffff;
   const apps = state.apps;
   const matched = Array.isArray(apps) && apps.some(app => app?.id === 'photoframe' && app.bank === state.loaded_app);
-  if (!matched || state.runtime_ready !== true || !integer(state.generation) || !integer(state.ble_service_revision) ||
+  if (!matched || state.runtime_ready !== true) {
+    const result = typeof state.last_result === 'number' ? `，结果码 ${state.last_result}` : '';
+    const phase = typeof state.phase === 'string' ? `，阶段 ${state.phase}` : '';
+    throw new Error(`相框应用未加载或未完成启动${result}${phase}。请展开相框信息中的设备运行诊断。`);
+  }
+  if (!integer(state.generation) || !integer(state.ble_service_revision) ||
       state.ble_characteristics !== 2 || state.ble_service_uuid !== 'a4fe200015364c88a2ce32ecdaac0471') {
-    throw new Error('相框应用未就绪。请先在控制台检查 photoframe；网页不会安装或切换应用');
+    throw new Error('相框应用已运行，但图片接收服务尚未就绪。请展开相框信息中的设备运行诊断。');
   }
   return { generation: state.generation as number, revision: state.ble_service_revision as number };
 }

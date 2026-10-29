@@ -1,5 +1,5 @@
 import { check, concat, deadline, equal, hex, sha256, sleep, u32, unhex, utf8, view } from '../bytes.ts';
-import type { Target } from '../ble/session.ts';
+import type { Target, MessageChannel } from '../ble/session.ts';
 import type { Pending, PendingStore } from './store.ts';
 import { validatePNG } from '../png.ts';
 export const IMAGE_TIMEOUT = 90 * 60 * 1000;
@@ -7,6 +7,7 @@ export interface ImageClient {
   info: { id: string };
   bindingID?: string;
   target(signal: AbortSignal): Promise<Target>;
+  openChannel?(service: Uint8Array, generation: number, signal: AbortSignal): Promise<MessageChannel | undefined>;
   busyCommand(op: number, payload: Uint8Array, signal: AbortSignal, long?: boolean): Promise<Uint8Array>;
 }
 export interface Receipt { state: number; op: number; code: number; id: Uint8Array; size: number; received: number; digest: Uint8Array; }
@@ -19,10 +20,15 @@ export function parseReceipt(data: Uint8Array): Receipt {
 }
 function wire(op: number, record: Pending, tail: Uint8Array = new Uint8Array()): Uint8Array { return concat(new Uint8Array([1, op]), unhex(record.requestID, 16), tail); }
 function targetBytes(target: Target, index: number): Uint8Array { return concat(u32(target.generation), u32(target.revision), u32(index)); }
-export async function exchange(client: ImageClient, target: Target, command: Uint8Array, signal: AbortSignal, long = false): Promise<Receipt> {
-  if (command.length > 128) throw new Error('图片命令超出 GATT 业务上限');
-  await client.busyCommand(14, concat(targetBytes(target, 0), command), signal, long);
-  const result = parseReceipt(await client.busyCommand(13, targetBytes(target, 1), signal));
+export async function exchange(client: ImageClient, target: Target, command: Uint8Array, signal: AbortSignal, long = false, channel?: MessageChannel): Promise<Receipt> {
+  if (command.length > (channel?.maxMessageBytes ?? 128)) throw new Error('图片命令超出 GATT 业务上限');
+  let data: Uint8Array;
+  if (channel) data = await channel.exchange(command, signal, long);
+  else {
+    await client.busyCommand(14, concat(targetBytes(target, 0), command), signal, long);
+    data = await client.busyCommand(13, targetBytes(target, 1), signal);
+  }
+  const result = parseReceipt(data);
   if (result.op !== command[1] || !equal(result.id, command.subarray(2, 18))) throw new Error('相框回执与当前请求不匹配');
   return result;
 }
@@ -44,24 +50,28 @@ export class Sender {
     if (await this.store.get()) throw new PendingError();
     // A frozen copy is both validated and transmitted; changing the preview cannot replace it.
     const image = png.slice(); await validatePNG(image); check(operation);
-    const target = await client.target(operation); const id = this.random(16);
+    const target = await client.target(operation);
+    const channel = await this.openChannel(client, target, operation);
+    const call = (command: Uint8Array, long = false) => exchange(client, target, command, operation, long, channel);
+    const chunkBytes = (channel?.maxMessageBytes ?? 128) - 22;
+    const id = this.random(16);
     if (id.length !== 16 || id.every(v => v === 0)) throw new Error('无法生成图片事务 ID');
     const record: Pending = { schema: 1, phase: 'pending', deviceID: client.info.id, bindingID: client.bindingID || undefined, requestID: hex(id), digest: hex(await sha256(image)), size: image.length, ...target, snapshotAt, createdAt: new Date().toISOString() };
     const cancelPoint = async () => {
       check(operation);
       if (!this.cancelRequested) return;
-      const receipt = await exchange(client, target, wire(4, record), operation);
+      const receipt = await call(wire(4, record));
       if (!matches(record, receipt) || receipt.state !== 5 || receipt.code !== 0) throw new Error('上传已中断；未确认取消回复，未提交刷新');
       throw new Error('已取消上传，未提交刷新');
     };
     try {
       const begin = concat(u32(record.size), unhex(record.digest, 32));
-      requireReceiving(record, await exchange(client, target, wire(1, record, begin), operation), 0);
+      requireReceiving(record, await call(wire(1, record, begin)), 0);
       await cancelPoint();
       progress('uploading', 0, record.size);
       for (let offset = 0; offset < image.length;) {
-        await cancelPoint(); const end = Math.min(offset + 106, image.length);
-        const receipt = await exchange(client, target, wire(2, record, concat(u32(offset), image.subarray(offset, end))), operation);
+        await cancelPoint(); const end = Math.min(offset + chunkBytes, image.length);
+        const receipt = await call(wire(2, record, concat(u32(offset), image.subarray(offset, end))));
         requireReceiving(record, receipt, end); offset = end; progress('uploading', offset, record.size);
       }
       await cancelPoint();
@@ -71,15 +81,15 @@ export class Sender {
       // must still prevent the physical COMMIT. Clear only after an exact,
       // authenticated CANCEL receipt and conditional durable removal succeed.
       if (this.cancelRequested) {
-        const canceled = await exchange(client, target, wire(4, record), operation);
+        const canceled = await call(wire(4, record));
         if (!matches(record, canceled) || canceled.state !== 5 || canceled.code !== 0) throw new PendingError();
         await this.store.remove(record);
         pending = false;
         throw new Error('已取消上传，未提交刷新');
       }
       progress('displaying', record.size, record.size);
-      const receipt = await exchange(client, target, wire(3, record), operation, true);
-      await this.finishOrPoll(client, record, receipt, operation, progress);
+      const receipt = await call(wire(3, record), true);
+      await this.finishOrPoll(client, record, receipt, operation, progress, channel);
     } catch (error) {
       if (error instanceof UnknownOutcomeError) throw error;
       if (pending) throw new PendingError();
@@ -94,15 +104,19 @@ export class Sender {
     let target: Target;
     try { target = await client.target(operation); } catch { throw new UnknownOutcomeError(); }
     if (target.generation !== record.generation || target.revision !== record.revision) throw new UnknownOutcomeError();
+    const channel = await this.openChannel(client, target, operation);
     try {
-      const receipt = await exchange(client, record, wire(5, record), operation);
-      await this.finishOrPoll(client, record, receipt, operation, progress);
+      const receipt = await exchange(client, record, wire(5, record), operation, false, channel);
+      await this.finishOrPoll(client, record, receipt, operation, progress, channel);
     } catch (error) {
       if (error instanceof UnknownOutcomeError) throw error;
       throw new PendingError();
     }
   }
-  private async finishOrPoll(client: ImageClient, record: Pending, first: Receipt, signal: AbortSignal, progress: Progress): Promise<void> {
+  private async openChannel(client: ImageClient, target: Target, signal: AbortSignal): Promise<MessageChannel | undefined> {
+    return client.openChannel?.(unhex('a4fe200015364c88a2ce32ecdaac0471',16),target.generation,signal);
+  }
+  private async finishOrPoll(client: ImageClient, record: Pending, first: Receipt, signal: AbortSignal, progress: Progress, channel?: MessageChannel): Promise<void> {
     let receipt = first;
     for (;;) {
       if (!matches(record, receipt)) throw new UnknownOutcomeError();
@@ -117,7 +131,7 @@ export class Sender {
       progress('displaying', record.size, record.size);
       await sleep(2000, signal);
       // Do not repeat COMMIT, even if its original response was lost.
-      receipt = await exchange(client, record, wire(5, record), signal);
+      receipt = await exchange(client, record, wire(5, record), signal, false, channel);
     }
   }
 }

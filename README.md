@@ -1,12 +1,12 @@
 # AI Quota Frame
 
-当前源码提供 **按键配对 v2、原生 BLE 发送，以及完整复用原 Go 引擎的 CPM 浏览器插件**。新版配对、长按解绑、重启保持关系和实际刷图 **尚未实机验证**；离线/浏览器 fixture 测试通过不等于设备验收完成。入口与验证范围见 [BLE 指南](docs/ble.md)、[浏览器使用说明](web/README.md)、[共享渲染验证](docs/web-frame-parity.md) 和 [客户端离线验证记录](docs/validation-client-pairing-v2-2026-10-29.md)。
+当前提供 **按键配对 v2、原生 BLE 发送，以及复用原 Go/WASM 引擎的 CPM 插件 0.3.2**。配合 ABI 2.3 宿主与 photoframe v21，手机 Web GATT 67,626 字节上传 7.9 秒，取得签名显示完成回执及人眼确认；前台定时推送支持 1–1440 分钟（默认 15）、启停和可选屏幕唤醒。接口、部署摘要与验证边界见 [手机验收记录](docs/validation-gatt-capacity-2026-10-29.md) 和 [浏览器使用说明](web/README.md)。首次配对/长按重置及原生各平台完整矩阵仍不以这轮结果代替。
 
-原生 Mac 在支持的设备上优先使用 ABI 2.2 CoC，其他已配对客户端走 GATT。2026-10-27 的 67,509 字节/2.477 秒和显示完成回执属于旧鉴权基线，保留在 [APP 收图历史](docs/app-ble-images.md)，不能用来证明配对 v2 已实机通过。
+原生 Mac 在支持的设备上优先使用 ABI 2.2 CoC；当前网页支持 ABI 2.3 GATT 大消息，旧应用仍可使用其原 GATT 接口。2026-10-27 的 67,509 字节/2.477 秒和显示完成回执属于旧鉴权基线，保留在 [APP 收图历史](docs/app-ble-images.md)，不能用来证明配对 v2 已实机通过。
 
 **仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md)。
 
-**CPM 浏览器相框插件：**[使用与协议验证](web/README.md) · [原生插件构建、安装与回滚](plugins/photopainter/README.md)。页面共用 Go/WASM 数据与画面，通过访问者电脑的 Web Bluetooth/GATT 发送。资源和最小账号投影使用现有 CPA 插件路由，官方 CPM 前端保持原样。浏览器与原生客户端是不同 owner；切换前暂停原 owner，按键重置后在新端配对。
+**CPM 浏览器相框插件：**[使用与协议验证](web/README.md) · [原生插件构建、安装与回滚](plugins/photopainter/README.md)。页面共用 Go/WASM 数据与画面，通过访问者手机或电脑的 Web Bluetooth/GATT 发送。资源和最小账号投影使用现有 CPA 插件路由，官方 CPM 前端保持原样。浏览器与原生客户端是不同 owner；切换前暂停原 owner，按键重置后在新端配对。
 
 > **AI / 开发者入口：**先阅读 [`AGENTS.md`](AGENTS.md)。空白电脑部署、三仓联调和真机诊断使用 [`develop-photopainter-stack`](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/.agents/skills/develop-photopainter-stack/SKILL.md)。
 
@@ -97,7 +97,7 @@ PHOTOFRAME_PUSH_TRANSPORT=ble
 
 ## macOS 常驻运行
 
-原生构建、当前鉴权和历史 BLE 实机结果见 [macOS 部署记录](docs/macos-deployment.md)。配对 v2 尚未实机验证。
+原生构建、当前鉴权和历史 BLE 实机结果见 [macOS 部署记录](docs/macos-deployment.md)。该原生/macOS 记录不代表本轮手机之外的完整配对/重置矩阵已验证。
 
 先配置忽略的 `.env`，使用 `go.mod` 要求的 Go 版本或更新版本执行 `make check`，再运行：
 
