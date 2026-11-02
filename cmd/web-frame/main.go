@@ -35,8 +35,9 @@ var current = struct {
 }{}
 
 // Go's browser transport delegates to fetch. The outer API stays same-origin,
-// disallows redirects and cookies, and exposes only the native client's three
-// existing read/forward endpoints. Provider secrets remain on CPA.
+// disallows redirects and cookies, and exposes only the native client's
+// existing read/forward endpoints, including CPA's plugin quota fetch.
+// Provider secrets remain on CPA.
 type originTransport struct {
 	origin string
 	inner  *http.Transport
@@ -55,7 +56,7 @@ func (transport originTransport) RoundTrip(request *http.Request) (*http.Respons
 	}
 	allowed := request.Method == http.MethodGet &&
 		(request.URL.Path == "/v0/management/auth-files" || request.URL.Path == "/v0/management/dashboard/summary" || request.URL.Path == "/v0/management/plugins/photopainter/account-subject") ||
-		request.Method == http.MethodPost && request.URL.Path == "/v0/management/api-call"
+		request.Method == http.MethodPost && (request.URL.Path == "/v0/management/api-call" || request.URL.Path == "/v0/management/quota/fetch")
 	if !allowed {
 		return nil, errors.New("unsupported management endpoint")
 	}

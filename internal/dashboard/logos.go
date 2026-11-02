@@ -33,6 +33,9 @@ const (
 
 	antigravityLogoSVG template.HTML = `<svg class="provider-logo" data-logo="antigravity" width="40" height="40" viewBox="0 0 64 59" role="img" aria-label="Antigravity" focusable="false"><path d="M0,0 L8,0 L14,4 L19,14 L27,40 L32,50 L36,54 L35,59 L30,59 L22,52 L11,35 L6,33 L-1,34 L-6,39 L-14,52 L-22,59 L-28,59 L-27,53 L-22,47 L-17,34 L-10,12 L-5,3 Z" fill="#3789f9" transform="translate(28,0)"/><path d="M0,0 L8,0 L14,4 L19,14 L25,35 L21,34 L16,29 L11,26 L7,20 L7,18 L2,16 L-3,15 L-8,18 L-12,19 L-9,9 L-4,2 Z" fill="#6d80d8" transform="translate(28,0)"/><path d="M0,0 L8,0 L14,4 L19,14 L20,19 L13,15 L10,12 L3,10 L-1,8 L-7,7 L-4,2 Z" fill="#d78240" transform="translate(28,0)"/><path d="M0,0 L5,1 L10,4 L12,9 L1,8 L-5,13 L-10,21 L-13,26 L-16,26 L-9,5 L-4,2 Z M6,7 Z" fill="#3294cc" transform="translate(25,14)"/><path d="M0,0 L5,2 L10,10 L12,18 L5,14 L1,10 L0,4 L-3,3 L0,2 Z" fill="#e45c49" transform="translate(36,1)"/><path d="M0,0 L9,1 L12,3 L12,5 L7,6 L4,8 L-1,11 L-5,12 L-2,2 Z" fill="#90ae64" transform="translate(21,7)"/><path d="M0,0 L5,1 L5,4 L-2,7 L-7,11 L-11,10 L-9,5 L-4,2 Z" fill="#53a89a" transform="translate(25,14)"/><path d="M0,0 L5,0 L16,9 L17,13 L12,12 L8,9 L8,7 L4,5 L0,2 Z" fill="#b5677d" transform="translate(33,11)"/><path d="M0,0 L6,0 L14,6 L19,11 L23,12 L22,15 L15,12 L10,8 L10,6 L4,5 Z" fill="#778998" transform="translate(27,12)"/><path d="M0,0 L4,2 L-11,17 L-12,14 L-5,4 Z" fill="#3390df" transform="translate(26,21)"/><path d="M0,0 L2,1 L-4,5 L-9,9 L-13,13 L-14,10 L-13,7 L-6,4 L-3,1 Z" fill="#3fa1b7" transform="translate(27,18)"/><path d="M0,0 L4,0 L9,5 L13,6 L12,9 L5,6 L0,2 Z" fill="#8277bb" transform="translate(37,18)"/><path d="M0,0 L5,1 L7,6 L-2,5 Z M1,4 Z" fill="#4989cf" transform="translate(30,17)"/><path d="M0,0 L5,1 L2,3 L-3,6 L-7,7 L-6,3 Z" fill="#71b774" transform="translate(23,12)"/><path d="M0,0 L7,1 L9,7 L5,6 L0,1 Z" fill="#6687e9" transform="translate(44,28)"/><path d="M0,0 L7,0 L5,1 L5,3 L8,4 L4,5 L-2,4 Z" fill="#c7af38" transform="translate(23,3)"/><path d="M0,0 L8,0 L8,3 L4,4 L-4,3 Z" fill="#ef842a" transform="translate(28,0)"/><path d="M0,0 L7,4 L7,6 L10,6 L11,10 L4,6 L0,2 Z" fill="#cd5d67" transform="translate(37,9)"/><path d="M0,0 L5,2 L9,8 L8,11 L2,3 L0,2 Z" fill="#f35241" transform="translate(36,1)"/><path d="M0,0 L8,2 L9,6 L4,5 L0,2 Z" fill="#a667a2" transform="translate(41,18)"/><path d="M0,0 L9,1 L8,3 L-2,3 Z" fill="#a4b34c" transform="translate(21,7)"/><path d="M0,0 L2,0 L7,5 L8,7 L3,6 L0,2 Z" fill="#617fcf" transform="translate(35,18)"/><path d="M0,0 L5,2 L8,7 L4,5 L0,2 Z" fill="#9d7784" transform="translate(33,11)"/><path d="M0,0 L6,2 L6,4 L0,3 Z" fill="#bc7f59" transform="translate(31,7)"/></svg>`
 
+	// OpenCode: a dark square frame whose lower interior is a 50% stripe tint,
+	// drawn with whole pixels so it stays crisp after six-ink quantization.
+	openCodeLogoSVG template.HTML = `<svg class="provider-logo" data-logo="opencode" width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="OpenCode" focusable="false" shape-rendering="crispEdges"><rect x="6" y="4" width="28" height="32" fill="#000000"/><rect x="12" y="10" width="16" height="20" fill="#ffffff"/><rect x="12" y="20" width="16" height="1" fill="#000000"/><rect x="12" y="22" width="16" height="1" fill="#000000"/><rect x="12" y="24" width="16" height="1" fill="#000000"/><rect x="12" y="26" width="16" height="1" fill="#000000"/><rect x="12" y="28" width="16" height="1" fill="#000000"/></svg>`
 	// The fallback is deliberately generic and contains no caller-provided text.
 	// Its solid terminal cursor stays legible even at 32 px.
 	fallbackLogoSVG template.HTML = `<svg class="provider-logo" data-logo="fallback" width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="Provider" focusable="false"><rect width="40" height="40" rx="4" fill="#000000"/><path d="M8 10h5l9 10-9 10H8l9-10Zm14 15h10v5H22Z" fill="#ffffff"/></svg>`
@@ -53,6 +56,8 @@ func ProviderLogoSVG(providerOrGroup string) template.HTML {
 		return claudeLogoSVG
 	case "antigravity":
 		return antigravityLogoSVG
+	case "opencode":
+		return openCodeLogoSVG
 	default:
 		return fallbackLogoSVG
 	}
@@ -72,6 +77,8 @@ func normalizeLogoProvider(raw string) string {
 		return "claude"
 	case "antigravity", "anti-gravity":
 		return "antigravity"
+	case "opencode", "opencode-go":
+		return "opencode"
 	default:
 		return ""
 	}

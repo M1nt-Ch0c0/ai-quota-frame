@@ -101,6 +101,8 @@ func normalizeProviderID(raw string) (string, []string, error) {
 		return "xai", nil, nil
 	case "kimi":
 		return "kimi", nil, nil
+	case "opencode", "opencode-go", "opencode-go-oauth":
+		return "opencode", nil, nil
 	default:
 		if strings.ContainsAny(id, " \t") {
 			return "", nil, fmt.Errorf("DISPLAY_PROVIDERS provider id %q is invalid", raw)
@@ -124,6 +126,8 @@ func defaultProviderLabel(ids []string) string {
 		return "GROK"
 	case "kimi":
 		return "KIMI"
+	case "opencode":
+		return "OPENCODE"
 	default:
 		return strings.ToUpper(ids[0])
 	}

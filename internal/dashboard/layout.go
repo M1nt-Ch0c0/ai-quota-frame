@@ -88,7 +88,7 @@ func aggregateRows(accounts []quota.Account, providers []DisplayProvider) []disp
 		singlePlan := ""
 		if len(plans) == 1 {
 			for plan := range plans {
-				detail += " / " + plan
+				detail += " / " + displayPlan(plan)
 				singlePlan = plan
 			}
 		}
@@ -140,7 +140,7 @@ func aggregateWindows(provider string, accounts []quota.Account) []displayWindow
 	}
 	var preferred []string
 	switch provider {
-	case "codex", "kimi", "claude":
+	case "codex", "kimi", "claude", "antigravity", "opencode":
 		preferred = []string{"5h", "7d"}
 	}
 	ordered := []string{}

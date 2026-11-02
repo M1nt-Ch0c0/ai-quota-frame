@@ -1,0 +1,12 @@
+{
+  "groups": [
+    {
+      "displayName": "OpenCode Go shared allowance (official)",
+      "buckets": [
+        {"window": "5h", "remainingFraction": 0.98, "resetTime": "2026-11-01T21:13:33.000Z", "description": "Official shared allowance: 2.00% used"},
+        {"window": "weekly", "remainingFraction": 0.99, "resetTime": "2026-11-02T00:00:00.000Z", "description": "Official shared allowance: 1.00% used"},
+        {"window": "monthly", "remainingFraction": 0.75, "resetTime": "2026-11-30T00:00:00.000Z", "description": "Official shared allowance: 25.00% used"}
+      ]
+    }
+  ]
+}

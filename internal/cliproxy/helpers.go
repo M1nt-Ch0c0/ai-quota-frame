@@ -21,6 +21,8 @@ func providerOf(entry map[string]any) string {
 		return "antigravity"
 	case "anthropic":
 		return "claude"
+	case "opencode-go", "opencode_go", "opencode-go-oauth":
+		return "opencode"
 	default:
 		return provider
 	}

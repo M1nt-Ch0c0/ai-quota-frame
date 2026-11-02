@@ -240,6 +240,8 @@ func (client *Client) fetchAccount(ctx context.Context, entry map[string]any) qu
 		windows, plan, err = client.fetchKimi(ctx, authIndex)
 	case "xai":
 		windows, plan, err = client.fetchXAI(ctx, authIndex, entry)
+	case "opencode", "opencode-go", "opencode_go", "opencode-go-oauth":
+		windows, plan, err = client.fetchOpenCode(ctx, authIndex, entry)
 	default:
 		err = errors.New("quota adapter routing failed")
 	}
@@ -292,7 +294,7 @@ func opaqueAuthIdentity(authIndex string) string {
 
 func quotaProviderSupported(provider string) bool {
 	switch provider {
-	case "codex", "claude", "antigravity", "kimi", "xai":
+	case "codex", "claude", "antigravity", "kimi", "xai", "opencode":
 		return true
 	default:
 		return false
@@ -422,6 +424,8 @@ func providerRank(provider string) int {
 		return 3
 	case "xai":
 		return 4
+	case "opencode":
+		return 5
 	default:
 		return 9
 	}

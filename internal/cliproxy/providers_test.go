@@ -156,8 +156,8 @@ func TestFetchAntigravityUsesQuotaSummaryAndConservativeWindowAggregation(t *tes
 	if err != nil {
 		t.Fatalf("fetchAntigravity() error = %v", err)
 	}
-	if plan != "standard-tier" {
-		t.Fatalf("plan = %q, want standard-tier", plan)
+	if plan != "standard" {
+		t.Fatalf("plan = %q, want standard", plan)
 	}
 	if len(quotaURLs) != 1 || quotaURLs[0] != dailySummaryURL {
 		t.Fatalf("quota summary calls = %v, want [%s]", quotaURLs, dailySummaryURL)

@@ -630,6 +630,8 @@ func antigravityWindow(value string) (string, string) {
 		return "5h", "5h"
 	case "weekly", "week", "7d", "seven-day", "seven_day":
 		return "7d", "7d"
+	case "monthly", "month", "30d":
+		return "30d", "30d"
 	default:
 		id := slug(value)
 		if id == "" {
@@ -672,12 +674,10 @@ func (client *Client) loadGoogleProjectAt(ctx context.Context, authIndex, endpoi
 	if loadedProject == "" {
 		return "", "", errors.New("loadCodeAssist returned no project")
 	}
-	plan := strings.ToLower(strings.TrimSpace(firstString(
-		nested(payload, "paidTier", "id"),
-		nested(payload, "paidTier", "name"),
-		nested(payload, "currentTier", "id"),
-		nested(payload, "currentTier", "name"),
-	)))
+	plan := googleTierPlan(nested(payload, "paidTier", "id"), nested(payload, "paidTier", "name"))
+	if plan == "" {
+		plan = googleTierPlan(nested(payload, "currentTier", "id"), nested(payload, "currentTier", "name"))
+	}
 	return loadedProject, plan, nil
 }
 

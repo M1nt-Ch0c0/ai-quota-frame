@@ -326,7 +326,7 @@ func TestPreviewFrameIncludesKimiWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderHTML() error = %v", err)
 	}
-	for _, needle := range []string{"KIMI", "85%", "96%", "advanced"} {
+	for _, needle := range []string{"KIMI", "85%", "96%", "Advanced"} {
 		if !strings.Contains(html, needle) {
 			t.Fatalf("preview html missing %q", needle)
 		}

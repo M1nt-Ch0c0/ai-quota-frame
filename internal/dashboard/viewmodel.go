@@ -162,6 +162,16 @@ func displayPlan(plan string) string {
 		return "Enterprise"
 	case "advanced":
 		return "Advanced"
+	case "ultra":
+		return "Ultra"
+	case "standard":
+		return "Standard"
+	case "legacy":
+		return "Legacy"
+	case "go":
+		return "Go"
+	case "go plus", "go-plus":
+		return "Go Plus"
 	default:
 		return compact(plan, 16)
 	}
@@ -206,6 +216,8 @@ func brandClass(group string) string {
 		return "kimi"
 	case "antigravity":
 		return "antigravity"
+	case "opencode":
+		return "opencode"
 	default:
 		return "other"
 	}

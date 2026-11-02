@@ -157,12 +157,21 @@ html, body {
   border-bottom: 2px dashed var(--hairline);
 }
 
+/* Four or five rows share the same 294px band so they never run into the
+   usage panel: fixed heights, and at five rows the reset line is dropped. */
+.rows { overflow: hidden; }
 .rows-4 .row,
 .rows-5 .row {
-  height: auto;
-  min-height: 58px;
-  padding: 4px 0;
+  min-height: 0;
+  padding: 2px 0;
+  overflow: hidden;
 }
+.rows-4 .row { height: 73px; }
+.rows-5 .row { height: 58px; }
+.rows-5 .window-reset,
+.rows-5 .reset-cards { display: none; }
+.rows-5 .logo-tile { width: 34px; height: 34px; }
+.rows-5 .provider-logo { width: 26px; height: 26px; }
 
 .logo-tile {
   display: flex;
@@ -181,6 +190,7 @@ html, body {
 .brand-grok { background-image: var(--dither-light-grey); }
 .brand-kimi { background-image: var(--dither-sky); }
 .brand-antigravity { background-image: var(--dither-pale-purple); }
+.brand-opencode { background-image: var(--dither-sky); }
 
 .provider-logo {
   display: block;
