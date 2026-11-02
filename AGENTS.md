@@ -1,6 +1,6 @@
 # AI quota frame agent guide
 
-**Current source baseline (2026-10-29):** plugin 0.3.2 shares the original Go/WASM renderer and uses saved physical-pairing v2 with ABI 2.3 GATT messages. Phone upload/completion and user visual confirmation passed; foreground scheduling has a real timer tick and automatic completion receipt; 0.3.2 adds a collapsed developer tool for application slot management. Fresh-pair/reset and native cross-platform acceptance are separate. See the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-status.md) and [phone evidence](docs/validation-gatt-capacity-2026-10-29.md).
+**Current source baseline (2026-10-29):** plugin 0.3.2 shares the original Go/WASM renderer and uses saved physical-pairing v2 with ABI 2.3 GATT messages. Phone upload/completion and user visual confirmation passed; foreground scheduling has a real timer tick and automatic completion receipt; 0.3.2 adds a collapsed developer tool for application slot management. Fresh-pair/reset and native cross-platform acceptance are separate. See the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-versions-and-limits.md) and [phone evidence](docs/validation-gatt-capacity-2026-10-29.md).
 
 Read this file before changing the PC-side service. For blank-machine setup, cross-repository integration, deployment, or hardware diagnosis, also read the complete project Skill in the sibling host checkout: `../photopainter-host/.agents/skills/develop-photopainter-stack/SKILL.md`.
 

@@ -4,7 +4,7 @@
 
 原生 Mac 在支持的设备上优先使用 ABI 2.2 CoC；当前网页支持 ABI 2.3 GATT 大消息，旧应用仍可使用其原 GATT 接口。2026-10-27 的 67,509 字节/2.477 秒和显示完成回执属于旧鉴权基线，保留在 [APP 收图历史](docs/app-ble-images.md)，不能用来证明配对 v2 已实机通过。
 
-**仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-status.md)。
+**仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-versions-and-limits.md)。
 
 **CPM 浏览器相框插件：**[使用与协议验证](web/README.md) · [原生插件构建、安装与回滚](plugins/photopainter/README.md)。页面共用 Go/WASM 数据与画面，通过访问者手机或电脑的 Web Bluetooth/GATT 发送。资源和最小账号投影使用现有 CPA 插件路由，官方 CPM 前端保持原样。浏览器与原生客户端是不同 owner；切换前暂停原 owner，按键重置后在新端配对。
 
