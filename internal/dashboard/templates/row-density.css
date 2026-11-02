@@ -1,0 +1,135 @@
+/* Shared show/hide ladder for arcade and pop. The row height is chosen in Go
+   (themeRowHeight); these rules only decide what still fits in that height.
+   Loaded after the theme sheet so the ladder wins over theme type sizes. */
+
+.density-compact .row,
+.density-dense .row {
+  overflow: hidden;
+}
+
+.density-compact .row-id,
+.density-dense .row-id {
+  clip-path: none;
+}
+
+.density-compact .logo-tile,
+.density-dense .logo-tile {
+  width: 28px;
+  height: 28px;
+}
+
+.density-dense .logo-tile {
+  width: 24px;
+  height: 24px;
+}
+
+.density-compact .provider-logo,
+.density-dense .provider-logo {
+  width: 22px;
+  height: 22px;
+}
+
+.density-dense .provider-logo {
+  width: 18px;
+  height: 18px;
+}
+
+.density-compact .player,
+.density-dense .player {
+  display: none;
+}
+
+.density-compact .provider,
+.density-dense .provider {
+  font-size: 16px;
+  line-height: 18px;
+  transform: none;
+}
+
+.density-dense .provider {
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.density-compact .plan,
+.density-dense .plan {
+  margin-left: 0;
+  font-size: 11px;
+  line-height: 13px;
+}
+
+.density-compact .row-name,
+.density-dense .row-name {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.density-compact .mini-cards,
+.density-dense .mini-cards,
+.density-compact .cards,
+.density-dense .cards,
+.density-compact .window-left,
+.density-dense .window-left {
+  display: none;
+}
+
+.density-compact .window-label::after,
+.density-dense .window-label::after {
+  content: none;
+}
+
+.density-compact .window,
+.density-dense .window {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "label meter value" "reset reset reset";
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.density-compact .window-head,
+.density-dense .window-head {
+  display: contents;
+}
+
+.density-compact .window-label,
+.density-dense .window-label {
+  grid-area: label;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.density-compact .window-value,
+.density-dense .window-value {
+  grid-area: value;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.density-compact .window-percent,
+.density-dense .window-percent {
+  font-size: 18px;
+  line-height: 18px;
+}
+
+.density-compact .bar,
+.density-dense .bar {
+  position: static;
+  grid-area: meter;
+  width: auto;
+  height: 12px;
+}
+
+.density-compact .window-reset {
+  grid-area: reset;
+  font-size: 11px;
+  line-height: 12px;
+}
+
+.density-dense .window-reset {
+  display: none;
+}

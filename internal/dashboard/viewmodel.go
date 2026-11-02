@@ -14,6 +14,7 @@ type frameData struct {
 	StatusClass string
 	UpdatedText string
 	RowCount    int
+	Density     string
 	Rows        []rowData
 	Usage       *usageData
 	Footer      string
@@ -36,6 +37,7 @@ type rowData struct {
 	CardCount   int
 	// CardsPanel moves the cards into the free window column when a row
 	// has a single quota window, e.g. Codex Pro with no 5h limit.
+	// Compact and dense rows hide the panel in CSS.
 	CardsPanel bool
 }
 
@@ -117,7 +119,7 @@ func buildFrameData(snapshot quota.Snapshot, location *time.Location, providers 
 			ResetCards:  cards,
 			MoreCards:   moreCards,
 			CardCount:   len(row.cards),
-			CardsPanel:  len(cards) > 0 && len(windows) == 1 && len(aggregated) <= 3,
+			CardsPanel:  len(cards) > 0 && len(windows) == 1,
 		})
 	}
 

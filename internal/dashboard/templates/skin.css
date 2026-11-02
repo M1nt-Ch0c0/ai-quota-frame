@@ -79,6 +79,7 @@ html, body {
   grid-template-columns: 188px minmax(0, 1fr);
   align-items: center;
   padding: 0 14px 0 10px;
+  overflow: hidden;
 }
 
 .row-id {
@@ -227,25 +228,25 @@ html, body {
 
 .card svg { display: block; }
 
-/* Four or five rows share the three-slot band in shorter compact slots. The
-   band hides the baked slot borders; each row keeps one line per window. */
+/* A row band covers the baked three-slot artwork whenever the live rows do
+   not land on those slots. Compact and dense rows then keep one line. */
 .row-band {
   position: absolute;
   border-radius: 8px;
   background: var(--ink-pale-mint);
 }
-.rows-4 .row, .rows-5 .row { grid-template-columns: 188px minmax(0, 1fr); padding: 0 12px 0 8px; }
-.rows-4 .row-id, .rows-5 .row-id { gap: 8px; }
-.rows-4 .provider-logo { width: 28px; height: 28px; }
-.rows-5 .provider-logo { width: 24px; height: 24px; }
-.rows-4 .row-name, .rows-5 .row-name { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; }
-.rows-4 .provider { font-size: 18px; line-height: 19px; }
-.rows-5 .provider { font-size: 16px; line-height: 17px; }
-.rows-4 .plan, .rows-5 .plan { font-size: 11px; line-height: 12px; border-width: 1px; }
-.rows-4 .status, .rows-5 .status { font-size: 10px; line-height: 11px; }
-.rows-4 .mini-cards, .rows-5 .mini-cards { display: none; }
-.rows-4 .row-body, .rows-5 .row-body { gap: 14px; padding-left: 12px; }
-.rows-4 .window, .rows-5 .window {
+.density-compact .row, .density-dense .row { padding: 0 12px 0 8px; }
+.density-compact .row-id, .density-dense .row-id { gap: 8px; }
+.density-compact .provider-logo, .density-dense .provider-logo { width: 28px; height: 28px; }
+.density-dense .provider-logo { width: 24px; height: 24px; }
+.density-compact .row-name, .density-dense .row-name { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; }
+.density-compact .provider { font-size: 18px; line-height: 19px; }
+.density-dense .provider { font-size: 16px; line-height: 17px; }
+.density-compact .plan, .density-dense .plan { font-size: 11px; line-height: 12px; border-width: 1px; }
+.density-compact .status, .density-dense .status { font-size: 10px; line-height: 11px; }
+.density-compact .mini-cards, .density-dense .mini-cards { display: none; }
+.density-compact .row-body, .density-dense .row-body { gap: 14px; padding-left: 12px; }
+.density-compact .window, .density-dense .window {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "label meter value" "reset reset reset";
@@ -253,17 +254,17 @@ html, body {
   row-gap: 2px;
   align-items: center;
 }
-.rows-4 .window-head, .rows-5 .window-head { display: contents; }
-.rows-4 .window-label, .rows-5 .window-label { grid-area: label; font-size: 15px; line-height: 16px; }
-.rows-4 .window-value, .rows-5 .window-value { grid-area: value; }
-.rows-4 .window-percent, .rows-5 .window-percent { font-size: 17px; line-height: 17px; }
-.rows-4 .window-left, .rows-5 .window-left { display: none; }
-.rows-4 .heart-meter, .rows-5 .heart-meter { grid-area: meter; grid-template-columns: minmax(0, 1fr); }
-.rows-4 .hp-label, .rows-5 .hp-label { display: none; }
-.rows-4 .window-reset { grid-area: reset; font-size: 11px; line-height: 12px; }
-.rows-5 .window-reset { display: none; }
-.rows-4 .window-empty, .rows-5 .window-empty { display: block; font-size: 14px; }
-.rows-4 .cards, .rows-5 .cards { display: none; }
+.density-compact .window-head, .density-dense .window-head { display: contents; }
+.density-compact .window-label, .density-dense .window-label { grid-area: label; font-size: 15px; line-height: 16px; }
+.density-compact .window-value, .density-dense .window-value { grid-area: value; }
+.density-compact .window-percent, .density-dense .window-percent { font-size: 17px; line-height: 17px; }
+.density-compact .window-left, .density-dense .window-left { display: none; }
+.density-compact .heart-meter, .density-dense .heart-meter { grid-area: meter; grid-template-columns: minmax(0, 1fr); }
+.density-compact .hp-label, .density-dense .hp-label { display: none; }
+.density-compact .window-reset { grid-area: reset; font-size: 11px; line-height: 12px; }
+.density-dense .window-reset { display: none; }
+.density-compact .window-empty, .density-dense .window-empty { display: block; font-size: 14px; }
+.density-compact .cards, .density-dense .cards { display: none; }
 
 /* usage */
 

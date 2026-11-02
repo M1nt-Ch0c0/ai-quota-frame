@@ -86,6 +86,7 @@ func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {
 	data := buildFrameData(snapshot, renderer.location, renderer.providers)
 	var buffer bytes.Buffer
 	theme := renderer.theme
+	data.Density = rowDensity(theme, themeRowHeight(theme, len(data.Rows)))
 	if look, isSkin := skinThemes[theme]; isSkin {
 		return renderer.renderSkin(data, theme, look)
 	}
@@ -99,7 +100,7 @@ func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {
 	if err := renderer.themed.Execute(&buffer, themed); err != nil {
 		return "", fmt.Errorf("execute themed dashboard template: %w", err)
 	}
-	return inlineStylesheet(buffer.String(), "templates/themed.css", "templates/theme-"+theme+".css")
+	return inlineStylesheet(buffer.String(), "templates/themed.css", "templates/theme-"+theme+".css", "templates/row-density.css")
 }
 
 func (renderer *Renderer) renderSkin(data frameData, theme, look string) (string, error) {
@@ -119,7 +120,7 @@ func (renderer *Renderer) renderSkin(data frameData, theme, look string) (string
 	for _, slot := range skinRowLayout(len(data.Rows)) {
 		skin.RowStyles = append(skin.RowStyles, slot.Style())
 	}
-	if len(data.Rows) > len(skinRowSlots) {
+	if len(data.Rows) != len(skinRowSlots) {
 		first, last := skinRowSlots[0], skinRowSlots[len(skinRowSlots)-1]
 		skin.RowBand = skinRect{first.X0, first.Y0, last.X1, last.Y1}.Style()
 	}

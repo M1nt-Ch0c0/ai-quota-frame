@@ -33,23 +33,69 @@ func skinSlots() []skinRect {
 	return append(slots, skinRowSlots...)
 }
 
-// skinRowLayout returns the row slots for n rows. Up to three rows use the
-// baked slots; four or five rows split the same band (from the first slot's
-// top to the last slot's bottom) into shorter compact slots drawn over it.
+// skinRowGap matches the pale gaps between the three baked row slots.
+const skinRowGap = 8
+
+// skinRowLayout splits the baked row band into n equal slots. Three rows land
+// on the baked rectangles; any other count covers that artwork with one band.
 func skinRowLayout(n int) []skinRect {
-	if n <= len(skinRowSlots) {
-		return skinRowSlots
+	if n < 1 {
+		n = 1
 	}
-	const gap = 6
 	top, bottom := skinRowSlots[0].Y0, skinRowSlots[len(skinRowSlots)-1].Y1
-	height := (bottom - top - gap*(n-1)) / n
+	height := (bottom - top - skinRowGap*(n-1)) / n
 	slots := make([]skinRect, n)
 	for i := range slots {
-		y := top + i*(height+gap)
+		y := top + i*(height+skinRowGap)
 		slots[i] = skinRect{skinRowSlots[0].X0, y, skinRowSlots[0].X1, y + height}
 	}
 	slots[n-1].Y1 = bottom
 	return slots
+}
+
+const (
+	densityComfortable = "comfortable"
+	densityCompact     = "compact"
+	densityDense       = "dense"
+)
+
+// rowDensity keeps or drops row details from the row's border-box height.
+// Comfortable rows are at least 64px, except pop, whose poster windows need
+// 80px. Compact rows are at least 44px.
+func rowDensity(theme string, height int) string {
+	comfortable := 64
+	if theme == "pop" {
+		comfortable = 80
+	}
+	switch {
+	case height >= comfortable:
+		return densityComfortable
+	case height >= 44:
+		return densityCompact
+	default:
+		return densityDense
+	}
+}
+
+// themeRowHeight is the border-box height shared by the provider rows.
+// Band and gap mirror the fixed frame CSS: classic .rows is 294px with no
+// gap; arcade's flex remainder is 292px with a 6px row gap; pop's remainder
+// is 288px with no gap. The skin band is the baked slot strip.
+func themeRowHeight(theme string, n int) int {
+	if n < 1 {
+		n = 1
+	}
+	band, gap := 294, 0
+	switch theme {
+	case "mint-skin":
+		band = skinRowSlots[len(skinRowSlots)-1].Y1 - skinRowSlots[0].Y0
+		gap = skinRowGap
+	case "arcade":
+		band, gap = 292, 6
+	case "pop":
+		band, gap = 288, 0
+	}
+	return (band - gap*(n-1)) / n
 }
 
 // skinThemes maps a skin theme (and its baked background) to the decoration

@@ -116,9 +116,36 @@ func TestMintSkinCompactsFourAndFiveRows(t *testing.T) {
 	}
 }
 
+func TestThemeRowDensityFollowsHeight(t *testing.T) {
+	want := []struct {
+		theme   string
+		n       int
+		density string
+	}{
+		{"mint-skin", 3, densityComfortable},
+		{"mint-skin", 4, densityCompact},
+		{"mint-skin", 5, densityDense},
+		{"classic", 3, densityComfortable},
+		{"classic", 4, densityComfortable},
+		{"classic", 5, densityCompact},
+		{"arcade", 3, densityComfortable},
+		{"arcade", 4, densityComfortable},
+		{"arcade", 5, densityCompact},
+		{"pop", 3, densityComfortable},
+		{"pop", 4, densityCompact},
+		{"pop", 5, densityCompact},
+	}
+	for _, test := range want {
+		got := rowDensity(test.theme, themeRowHeight(test.theme, test.n))
+		if got != test.density {
+			t.Errorf("%s x%d height %d density = %s, want %s", test.theme, test.n, themeRowHeight(test.theme, test.n), got, test.density)
+		}
+	}
+}
+
 func TestSkinRowLayoutStaysInsideBakedBand(t *testing.T) {
-	if got := skinRowLayout(3); len(got) != 3 || got[0] != skinRowSlots[0] {
-		t.Fatal("three rows must keep the baked slots")
+	if got := skinRowLayout(3); len(got) != 3 || got[0] != skinRowSlots[0] || got[1] != skinRowSlots[1] || got[2] != skinRowSlots[2] {
+		t.Fatalf("three rows must keep the baked slots, got %+v", got)
 	}
 	top, bottom := skinRowSlots[0].Y0, skinRowSlots[2].Y1
 	for _, n := range []int{4, 5} {
