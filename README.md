@@ -56,8 +56,10 @@ make check
 set -a
 . ./.env
 set +a
-./dist/ai-quota-frame
+./dist/ai-quota-frame daemon
 ```
+
+`ai-quota-frame` 不带参数只显示帮助，不会连接数据源或相框；服务需要显式使用 `daemon` 子命令启动。命令行功能分别是 `ble`、`console` 和 `source-check`。LaunchAgent（`deploy/install-macos.py`）、systemd 单元和 Docker 镜像都已传入 `daemon`。从旧版本升级时，必须重新运行对应的安装器，或手动在启动命令末尾加上 `daemon`，否则服务每次启动只会打印帮助就退出。
 
 每次成功的额度刷新都会交给单工作线程处理；队列只保留最新快照。主机生成的图片必须不超过 5 MiB。默认 BLE 模式使用已配对关系，支持时走 CoC，否则使用 GATT；只在收到匹配的签名完成回执后记为刷屏完成。没有配对关系时返回可操作的配对提示，不打开蓝牙连接反复尝试。
 

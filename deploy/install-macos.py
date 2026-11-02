@@ -110,7 +110,7 @@ plist.write_bytes(
         {
             "Label": label,
             "AssociatedBundleIdentifiers": [label],
-            "ProgramArguments": [str(executable)],
+            "ProgramArguments": [str(executable), "daemon"],
             "WorkingDirectory": str(dest),
             "RunAtLoad": True,
             "KeepAlive": True,

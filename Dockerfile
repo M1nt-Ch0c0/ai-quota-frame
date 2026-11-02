@@ -18,3 +18,4 @@ RUN apt-get update \
 COPY --from=build /out/ai-quota-frame /usr/local/bin/ai-quota-frame
 USER nobody
 ENTRYPOINT ["/usr/local/bin/ai-quota-frame"]
+CMD ["daemon"]

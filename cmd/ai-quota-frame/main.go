@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -23,20 +25,57 @@ import (
 )
 
 func main() {
-	os.Exit(run())
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run() int {
-	if len(os.Args) > 1 && os.Args[1] == "source-check" {
-		return runSourceCheck(os.Args[2:], os.Stdout, os.Stderr)
+const usage = `usage: ai-quota-frame <command> [arguments]
+
+Commands:
+  daemon        run the collector, renderer and PhotoPainter push service
+  ble           pair with, inspect and manage a PhotoPainter over Bluetooth
+  console       query the running daemon through the local console socket
+  source-check  check the configured quota and usage sources once
+  help          show this help
+
+Running without a command only prints this help; the service starts with
+"ai-quota-frame daemon". Run "ai-quota-frame <command>" for its own usage.
+`
+
+// The service is an explicit subcommand, so a bare invocation never connects
+// to data sources or the display.
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stdout, usage)
+		return 0
 	}
-	if len(os.Args) > 1 && os.Args[1] == "console" {
-		return runConsole(os.Args[2:], os.Stdout, os.Stderr)
+	switch args[0] {
+	case "daemon":
+		return runDaemon(args[1:], stdout, stderr)
+	case "ble":
+		return runBLE(args[1:], stdout, stderr)
+	case "console":
+		return runConsole(args[1:], stdout, stderr)
+	case "source-check":
+		return runSourceCheck(args[1:], stdout, stderr)
+	case "help", "-h", "--help":
+		fmt.Fprint(stdout, usage)
+		return 0
+	default:
+		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
+		return 2
 	}
-	if len(os.Args) > 1 && os.Args[1] == "ble" {
-		return runBLE(os.Args[2:], os.Stdout, os.Stderr)
+}
+
+func runDaemon(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(stdout, "usage: ai-quota-frame daemon\n\nConfiguration is read from the environment (see .env.example).")
+		return 0
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if len(args) > 0 {
+		fmt.Fprintln(stderr, "usage: ai-quota-frame daemon (configuration is read from the environment)")
+		return 2
+	}
+	logger := slog.New(slog.NewTextHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	configuration, err := config.FromEnv()
 	if err != nil {
 		logger.Error("invalid configuration", "error", err)
