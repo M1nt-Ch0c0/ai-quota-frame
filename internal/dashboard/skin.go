@@ -33,8 +33,8 @@ func skinSlots() []skinRect {
 	return append(slots, skinRowSlots...)
 }
 
-// skinThemes maps a skin theme to its baked background and to the themed
-// look used when the configured rows do not fit the skin's three slots.
+// skinThemes maps a skin theme (and its baked background) to the decoration
+// set drawn on it. Rows that do not fit the three slots use the classic layout.
 var skinThemes = map[string]string{"mint-skin": "mint"}
 
 func skinBackground(theme string) (template.URL, error) {

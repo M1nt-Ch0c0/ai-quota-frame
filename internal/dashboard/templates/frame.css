@@ -180,7 +180,7 @@ html, body {
 .brand-codex { background-image: var(--dither-pale-sky); }
 .brand-grok { background-image: var(--dither-light-grey); }
 .brand-kimi { background-image: var(--dither-sky); }
-.brand-gemini { background-image: var(--dither-pale-purple); }
+.brand-antigravity { background-image: var(--dither-pale-purple); }
 
 .provider-logo {
   display: block;

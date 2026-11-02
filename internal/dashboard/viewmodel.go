@@ -204,8 +204,8 @@ func brandClass(group string) string {
 		return "grok"
 	case "kimi":
 		return "kimi"
-	case "gemini-cli", "antigravity":
-		return "gemini"
+	case "antigravity":
+		return "antigravity"
 	default:
 		return "other"
 	}

@@ -64,7 +64,7 @@ func TestBrowserRasterMatchesNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, theme := range []string{"mint-skin", "classic", "mint", "arcade", "pop"} {
+	for _, theme := range []string{"mint-skin", "classic", "arcade", "pop"} {
 		for _, scene := range []struct {
 			name     string
 			snapshot quota.Snapshot

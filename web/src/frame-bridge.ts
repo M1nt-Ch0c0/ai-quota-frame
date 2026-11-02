@@ -13,7 +13,7 @@ export interface FrameSnapshot {
   errors?: string[];
 }
 export interface FrameOptions {
-  theme?: 'classic' | 'mint' | 'arcade' | 'pop' | 'mint-skin';
+  theme?: 'classic' | 'arcade' | 'pop' | 'mint-skin';
   providers?: string; timezone?: string; refreshSeconds?: number;
 }
 export const DEFAULT_FRAME_OPTIONS: Readonly<Required<FrameOptions>> = Object.freeze({

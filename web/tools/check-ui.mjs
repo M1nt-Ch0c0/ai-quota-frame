@@ -253,11 +253,11 @@ try {
   check('Reopened settings with restored providers is submittable', await page.evaluate(`!!document.querySelector('#providers input:checked')&&!document.querySelector('#settings-save').disabled`), 'Clear all providers, Escape, reopen settings');
   const priorPreferences = await page.evaluate(`localStorage.getItem('photopainter:display-v2')`);
   await page.evaluate(`for(const e of document.querySelectorAll('#providers input'))e.checked=true;document.querySelector('#providers').dispatchEvent(new Event('change',{bubbles:true}))`);
-  check('Settings rejects more than five providers', await page.evaluate(`document.querySelectorAll('#providers input:checked').length===6&&document.querySelector('#settings-save').disabled&&document.querySelector('#providers').hasAttribute('data-invalid')`));
+  check('Settings offers exactly the five supported providers and permits all of them', await page.evaluate(`document.querySelectorAll('#providers input:checked').length===5&&!document.querySelector('#settings-save').disabled&&!document.querySelector('#providers input[value^="gemini"]')`));
+  await page.evaluate(`for(const e of document.querySelectorAll('#providers input'))e.checked=false;document.querySelector('#providers').dispatchEvent(new Event('change',{bubbles:true}))`);
   await page.evaluate(`document.querySelector('#settings-dialog form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`);
   check('Direct settings submission cannot bypass the provider limit', await page.evaluate(`document.querySelector('#settings-dialog').open`) && await page.evaluate(`localStorage.getItem('photopainter:display-v2')`) === priorPreferences);
-  await page.evaluate(`const all=document.querySelectorAll('#providers input');all[all.length-1].checked=false;document.querySelector('#providers').dispatchEvent(new Event('change',{bubbles:true}))`);
-  check('Settings permits the native maximum of five providers', await page.evaluate(`document.querySelectorAll('#providers input:checked').length===5&&!document.querySelector('#settings-save').disabled`));
+  check('Theme list drops the retired mint page and names the skin 薄巧', await page.evaluate(`(()=>{const o=[...document.querySelectorAll('#theme option')];return !o.some(x=>x.value==='mint')&&o.find(x=>x.value==='mint-skin').textContent==='薄巧（默认）'})()`));
   await key('Escape'); await click('#view-settings');
   // A change event resumes the flow even when the preceding regression is found.
   await page.evaluate(`document.querySelector('#providers').dispatchEvent(new Event('change',{bubbles:true}))`);

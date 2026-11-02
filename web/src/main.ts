@@ -29,8 +29,10 @@ const errorText = (error: unknown) => error instanceof DeviceError ? ({
   10: '相框未能保存配对信息。', 11: '连接已过期，请重新连接。',
   13: '相框未能完成屏幕刷新。', 14: '相框已重启，请先核对上次显示结果。',
 } as Record<number, string>)[error.code] || '相框未完成这项操作，请重新连接。' : error instanceof Error ? error.message : '操作未完成，请重试';
-const themes = ['classic', 'mint', 'arcade', 'pop', 'mint-skin'] as const;
-const names: Record<string, string> = { classic: '经典', mint: '薄荷', arcade: '街机', pop: '波普', 'mint-skin': '薄荷皮肤' };
+const themes = ['classic', 'arcade', 'pop', 'mint-skin'] as const;
+const names: Record<string, string> = { classic: '经典', arcade: '街机', pop: '波普', 'mint-skin': '薄巧' };
+// Saved settings may name the retired mint page or the removed Gemini CLI row.
+const retiredProviders = new Set(['gemini-cli:GEMINI']);
 const providerValues = Array.from(document.querySelectorAll<HTMLInputElement>('#providers input')).map(v => v.value);
 const preferencesKey = 'photopainter:display-v2', selectionKey = 'photopainter:selected-v2';
 interface Preferences extends Required<FrameOptions> { automatic: boolean; keepAwake: boolean; }
@@ -38,6 +40,8 @@ function loadPreferences(): Preferences {
   const defaults = { ...DEFAULT_FRAME_OPTIONS, automatic: false, keepAwake: false };
   try {
     const p = JSON.parse(localStorage.getItem(preferencesKey) || 'null');
+    if (p?.theme === 'mint') p.theme = 'mint-skin';
+    if (typeof p?.providers === 'string') p.providers = p.providers.split(',').filter((v: string) => !retiredProviders.has(v)).join(',');
     if (!p || !themes.includes(p.theme) || typeof p.providers !== 'string' || !p.providers.length || p.providers.split(',').length > 5 ||
       new Set(p.providers.split(',')).size !== p.providers.split(',').length ||
       !p.providers.split(',').every((v: string) => providerValues.includes(v)) || typeof p.timezone !== 'string' ||

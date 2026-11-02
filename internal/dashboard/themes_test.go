@@ -11,7 +11,7 @@ import (
 )
 
 func TestParseTheme(t *testing.T) {
-	for raw, want := range map[string]string{"": "classic", " Mint ": "mint", "arcade": "arcade", "pop": "pop", "mint-skin": "mint-skin"} {
+	for raw, want := range map[string]string{"": "classic", " Mint ": "mint-skin", "arcade": "arcade", "pop": "pop", "mint-skin": "mint-skin"} {
 		if got, err := ParseTheme(raw); err != nil || got != want {
 			t.Errorf("ParseTheme(%q) = %q, %v; want %q", raw, got, err, want)
 		}
@@ -29,7 +29,7 @@ func TestEveryThemeRendersLiveData(t *testing.T) {
 		Windows:    []quota.Window{{ID: "7d", Label: "7d", RemainingPercent: quota.Percent(67)}},
 		ResetCards: []quota.ResetCard{{ExpiresAt: &expires}},
 	})
-	for _, theme := range []string{"classic", "mint", "arcade", "pop", "mint-skin"} {
+	for _, theme := range []string{"classic", "arcade", "pop", "mint-skin"} {
 		renderer, err := New(time.UTC)
 		if err != nil {
 			t.Fatal(err)
@@ -86,4 +86,26 @@ func testGradientImage(width, height int) *image.NRGBA {
 		}
 	}
 	return art
+}
+
+func TestMintSkinOverflowUsesClassicLayout(t *testing.T) {
+	renderer, err := New(time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := renderer.SetTheme("mint-skin"); err != nil {
+		t.Fatal(err)
+	}
+	providers, err := ParseDisplayProviders("codex,claude,xai,kimi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer.SetDisplayProviders(providers)
+	html, err := renderer.renderHTML(testSnapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `class="brand-title"`) || strings.Contains(html, "data:image/png;base64,") || strings.Contains(html, "theme-mint") {
+		t.Fatal("four rows on mint-skin did not fall back to the classic layout")
+	}
 }

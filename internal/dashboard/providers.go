@@ -25,7 +25,7 @@ func DefaultDisplayProviders() []DisplayProvider {
 // ParseDisplayProviders reads DISPLAY_PROVIDERS.
 // Empty input returns the default three rows.
 // Each comma-separated slot is `id[+id...][:LABEL]`.
-// Example: `codex,claude:CLAUDE,gemini-cli+antigravity:GEMINI`.
+// Example: `codex,claude:CLAUDE,antigravity:AGY`.
 func ParseDisplayProviders(raw string) ([]DisplayProvider, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -93,12 +93,10 @@ func normalizeProviderID(raw string) (string, []string, error) {
 		return "codex", nil, nil
 	case "claude", "anthropic":
 		return "claude", nil, nil
-	case "gemini", "gemini-cli", "gemini-cli-oauth":
-		return "gemini-cli", nil, nil
 	case "antigravity", "anti-gravity":
 		return "antigravity", nil, nil
-	case "google":
-		return "gemini-cli", []string{"antigravity"}, nil
+	case "gemini", "gemini-cli", "gemini-cli-oauth", "google":
+		return "", nil, fmt.Errorf("DISPLAY_PROVIDERS provider %q is no longer supported; Gemini CLI quotas were removed, use antigravity", raw)
 	case "xai", "grok":
 		return "xai", nil, nil
 	case "kimi":
@@ -115,16 +113,11 @@ func defaultProviderLabel(ids []string) string {
 	if len(ids) == 0 {
 		return "OAUTH"
 	}
-	if containsString(ids, "gemini-cli") && containsString(ids, "antigravity") {
-		return "GEMINI"
-	}
 	switch ids[0] {
 	case "codex":
 		return "CODEX"
 	case "claude":
 		return "CLAUDE"
-	case "gemini-cli":
-		return "GEMINI"
 	case "antigravity":
 		return "ANTIGRAVITY"
 	case "xai":

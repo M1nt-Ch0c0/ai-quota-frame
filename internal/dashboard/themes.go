@@ -3,6 +3,7 @@ package dashboard
 import (
 	"fmt"
 	"html/template"
+	"slices"
 	"strings"
 )
 
@@ -10,29 +11,28 @@ import (
 // by the pixel-art decorations drawn below. Every decoration is built from
 // whole-pixel rectangles filled with pure inks or the 2x2 ink patterns
 // declared in themeDefsSVG, so the frame stays noise-free after quantization.
+// "mint" is no longer a selectable page; its decorations remain the artwork
+// set of the mint-skin theme.
 var themeWordmarkScale = map[string]int{
 	"mint":   5,
 	"arcade": 5,
 	"pop":    8,
 }
 
-func validTheme(theme string) bool {
-	if theme == "classic" {
-		return true
-	}
-	_, ok := themeWordmarkScale[theme]
-	_, skin := skinThemes[theme]
-	return ok || skin
-}
+var selectableThemes = []string{"classic", "arcade", "pop", "mint-skin"}
 
 // ParseTheme normalizes FRAME_THEME. Empty input selects the classic layout.
+// The retired "mint" page maps to mint-skin so older configurations still start.
 func ParseTheme(raw string) (string, error) {
 	theme := strings.ToLower(strings.TrimSpace(raw))
-	if theme == "" {
+	switch theme {
+	case "":
 		return "classic", nil
+	case "mint":
+		return "mint-skin", nil
 	}
-	if !validTheme(theme) {
-		return "", fmt.Errorf("FRAME_THEME %q is not one of classic, mint, arcade, pop, mint-skin", raw)
+	if !slices.Contains(selectableThemes, theme) {
+		return "", fmt.Errorf("FRAME_THEME %q is not one of %s", raw, strings.Join(selectableThemes, ", "))
 	}
 	return theme, nil
 }

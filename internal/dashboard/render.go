@@ -85,19 +85,19 @@ func (renderer *Renderer) RenderHTML(snapshot quota.Snapshot) (string, error) {
 func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {
 	data := buildFrameData(snapshot, renderer.location, renderer.providers)
 	var buffer bytes.Buffer
-	if renderer.theme == "classic" {
-		if err := renderer.tmpl.Execute(&buffer, data); err != nil {
-			return "", fmt.Errorf("execute dashboard template: %w", err)
-		}
-		return inlineStylesheet(buffer.String(), "templates/frame.css")
-	}
 	theme := renderer.theme
 	if look, isSkin := skinThemes[theme]; isSkin {
 		if len(data.Rows) <= len(skinRowSlots) {
 			return renderer.renderSkin(data, theme, look)
 		}
-		// The skin artwork only has room for three rows.
-		theme = look
+		// The skin artwork only has room for three rows; more use the classic layout.
+		theme = "classic"
+	}
+	if theme == "classic" {
+		if err := renderer.tmpl.Execute(&buffer, data); err != nil {
+			return "", fmt.Errorf("execute dashboard template: %w", err)
+		}
+		return inlineStylesheet(buffer.String(), "templates/frame.css")
 	}
 	themed := themedFrameData{frameData: data, Theme: theme, Art: buildThemeArt(theme)}
 	if err := renderer.themed.Execute(&buffer, themed); err != nil {

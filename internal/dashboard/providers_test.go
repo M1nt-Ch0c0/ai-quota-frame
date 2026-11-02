@@ -18,14 +18,14 @@ func TestParseDisplayProvidersDefault(t *testing.T) {
 }
 
 func TestParseDisplayProvidersCustomSlots(t *testing.T) {
-	providers, err := ParseDisplayProviders("codex, claude:CLAUDE, google")
+	providers, err := ParseDisplayProviders("codex, claude:CLAUDE, anti-gravity")
 	if err != nil {
 		t.Fatalf("ParseDisplayProviders() error = %v", err)
 	}
 	want := []DisplayProvider{
 		{IDs: []string{"codex"}, Group: "codex", Label: "CODEX"},
 		{IDs: []string{"claude"}, Group: "claude", Label: "CLAUDE"},
-		{IDs: []string{"gemini-cli", "antigravity"}, Group: "gemini-cli", Label: "GEMINI"},
+		{IDs: []string{"antigravity"}, Group: "antigravity", Label: "ANTIGRAVITY"},
 	}
 	if !reflect.DeepEqual(providers, want) {
 		t.Fatalf("providers = %#v, want %#v", providers, want)

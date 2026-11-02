@@ -17,8 +17,6 @@ func rawProviderOf(entry map[string]any) string {
 func providerOf(entry map[string]any) string {
 	provider := rawProviderOf(entry)
 	switch provider {
-	case "gemini", "gemini_cli", "gemini-cli-oauth":
-		return "gemini-cli"
 	case "anti-gravity":
 		return "antigravity"
 	case "anthropic":
@@ -58,11 +56,7 @@ func displayName(entry map[string]any) string {
 	if email := strings.TrimSpace(firstString(entry["email"], nested(entry, "metadata", "email"))); email != "" {
 		return maskEmail(email)
 	}
-	provider := providerOf(entry)
-	if provider == "gemini-cli" {
-		provider = "gemini"
-	}
-	return provider + " account"
+	return providerOf(entry) + " account"
 }
 
 func maskEmail(email string) string {

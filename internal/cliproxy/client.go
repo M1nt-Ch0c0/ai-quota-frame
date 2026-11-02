@@ -234,8 +234,6 @@ func (client *Client) fetchAccount(ctx context.Context, entry map[string]any) qu
 		windows, plan, err = client.fetchCodex(ctx, authIndex, entry)
 	case "claude", "anthropic":
 		windows, plan, err = client.fetchClaude(ctx, authIndex)
-	case "gemini", "gemini_cli", "gemini-cli", "gemini-cli-oauth":
-		windows, plan, err = client.fetchGemini(ctx, authIndex, entry)
 	case "antigravity", "anti-gravity":
 		windows, plan, err = client.fetchAntigravity(ctx, authIndex, entry)
 	case "kimi":
@@ -294,7 +292,7 @@ func opaqueAuthIdentity(authIndex string) string {
 
 func quotaProviderSupported(provider string) bool {
 	switch provider {
-	case "codex", "claude", "gemini-cli", "antigravity", "kimi", "xai":
+	case "codex", "claude", "antigravity", "kimi", "xai":
 		return true
 	default:
 		return false
@@ -418,14 +416,12 @@ func providerRank(provider string) int {
 		return 0
 	case "claude":
 		return 1
-	case "gemini-cli":
-		return 2
 	case "antigravity":
-		return 3
+		return 2
 	case "kimi":
-		return 4
+		return 3
 	case "xai":
-		return 5
+		return 4
 	default:
 		return 9
 	}

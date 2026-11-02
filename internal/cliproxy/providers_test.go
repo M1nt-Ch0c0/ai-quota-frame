@@ -125,46 +125,6 @@ func TestFetchClaudeParsesFixturePercentAndScopedWindows(t *testing.T) {
 	}
 }
 
-func TestFetchGeminiParsesRemainingFractionAndPrefersPaidTier(t *testing.T) {
-	loadBody := providerFixtureBody(t, "google_load_paid_tier.json")
-	quotaBody := providerFixtureBody(t, "gemini_quota.json")
-	client := providerFixtureClient(t, func(request apiCallRequest) apiCallResponse {
-		switch request.URL {
-		case geminiLoadURL:
-			return providerSuccessResponse(loadBody)
-		case geminiQuotaURL:
-			var data map[string]any
-			if err := json.Unmarshal([]byte(request.Data), &data); err != nil {
-				t.Errorf("decode Gemini request data: %v", err)
-			} else if got := firstString(data["project"]); got != "fixture-project" {
-				t.Errorf("Gemini request project = %q, want fixture-project", got)
-			}
-			return providerSuccessResponse(quotaBody)
-		default:
-			t.Errorf("unexpected provider URL %q", request.URL)
-			return providerErrorResponse(http.StatusNotFound)
-		}
-	})
-
-	windows, plan, err := client.fetchGemini(context.Background(), "gemini-auth", map[string]any{})
-	if err != nil {
-		t.Fatalf("fetchGemini() error = %v", err)
-	}
-	if plan != "standard-tier" {
-		t.Fatalf("plan = %q, want paidTier id standard-tier (currentTier is free-tier)", plan)
-	}
-
-	pro := requireProviderWindow(t, windows, "pro")
-	assertProviderPercent(t, pro.RemainingPercent, 25, "Gemini Pro remaining")
-	assertProviderPercent(t, pro.UsedPercent, 75, "Gemini Pro used")
-	assertProviderReset(t, pro.ResetsAt, "2026-08-30T12:45:00Z")
-
-	flash := requireProviderWindow(t, windows, "flash")
-	assertProviderPercent(t, flash.RemainingPercent, 80, "Gemini Flash remaining")
-	other := requireProviderWindow(t, windows, "other")
-	assertProviderPercent(t, other.RemainingPercent, 55, "Gemini other remaining")
-}
-
 func TestFetchAntigravityUsesQuotaSummaryAndConservativeWindowAggregation(t *testing.T) {
 	const dailySummaryURL = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	loadBody := providerFixtureBody(t, "google_load_paid_tier.json")

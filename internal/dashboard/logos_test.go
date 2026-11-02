@@ -16,6 +16,7 @@ func TestProviderLogoSVGAliases(t *testing.T) {
 		{want: `data-logo="grok"`, ids: []string{"xai", "x-ai", "GROK"}},
 		{want: `data-logo="kimi"`, ids: []string{"kimi", "moonshot", "moonshot_ai", "MoonshotAI"}},
 		{want: `data-logo="claude"`, ids: []string{"claude", "Anthropic"}},
+		{want: `data-logo="antigravity"`, ids: []string{"antigravity", "Anti-Gravity", "anti_gravity"}},
 	}
 	for _, test := range tests {
 		for _, id := range test.ids {
@@ -30,7 +31,7 @@ func TestProviderLogoSVGAliases(t *testing.T) {
 func TestProviderLogoSVGIsSelfContainedAndUsesSourceColors(t *testing.T) {
 	colorPattern := regexp.MustCompile(`(?i)#[0-9a-f]{6}`)
 	sourceColors := map[string]bool{"#000000": true, "#ffffff": true, "#10a37f": true, "#d97757": true}
-	for _, id := range []string{"codex", "xai", "kimi", "claude", "unknown"} {
+	for _, id := range []string{"codex", "xai", "kimi", "claude", "antigravity", "unknown"} {
 		svg := string(ProviderLogoSVG(id))
 		lower := strings.ToLower(svg)
 		if !strings.HasPrefix(svg, "<svg") || !strings.HasSuffix(svg, "</svg>") {
@@ -40,6 +41,13 @@ func TestProviderLogoSVGIsSelfContainedAndUsesSourceColors(t *testing.T) {
 			if strings.Contains(lower, forbidden) {
 				t.Errorf("ProviderLogoSVG(%q) contains forbidden %q", id, forbidden)
 			}
+		}
+		if id == "antigravity" {
+			// The official multicolour mark keeps all 24 traced source colours.
+			if len(colorPattern.FindAllString(lower, -1)) != 24 || !strings.Contains(lower, "#3789f9") {
+				t.Errorf("Antigravity logo lost its official colours: %q", svg)
+			}
+			continue
 		}
 		for _, color := range colorPattern.FindAllString(lower, -1) {
 			if !sourceColors[color] {

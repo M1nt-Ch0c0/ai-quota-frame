@@ -17,8 +17,6 @@ const (
 	codexUsageURL      = "https://chatgpt.com/backend-api/wham/usage"
 	codexResetCardsURL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 	claudeUsageURL     = "https://api.anthropic.com/api/oauth/usage"
-	geminiLoadURL      = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
-	geminiQuotaURL     = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
 	antigravityLoadURL = "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
 	antigravityDaily   = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	antigravitySandbox = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary"
@@ -501,40 +499,6 @@ func selectedClaudeFableLimit(payload map[string]any) map[string]any {
 	return fallback
 }
 
-func (client *Client) fetchGemini(ctx context.Context, authIndex string, entry map[string]any) ([]quota.Window, string, error) {
-	project := projectID(entry)
-	loadedProject, plan, loadErr := client.loadGoogleProject(ctx, authIndex, project, geminiMetadata())
-	if loadedProject != "" {
-		project = loadedProject
-	}
-	if project == "" {
-		if loadErr == nil {
-			loadErr = errors.New("Gemini loadCodeAssist returned no project")
-		}
-		return nil, plan, loadErr
-	}
-	requestBody, _ := json.Marshal(map[string]string{"project": project})
-	response, err := client.apiCall(ctx, apiCallRequest{
-		AuthIndex: authIndex,
-		Method:    http.MethodPost,
-		URL:       geminiQuotaURL,
-		Header:    googleHeaders(),
-		Data:      string(requestBody),
-	})
-	if err != nil {
-		return nil, plan, err
-	}
-	payload, err := parseJSONBody(response.Body)
-	if err != nil {
-		return nil, plan, err
-	}
-	windows := parseGeminiBuckets(payload)
-	if len(windows) == 0 {
-		return nil, plan, errors.New("Gemini quota response contained no usable buckets")
-	}
-	return windows, plan, nil
-}
-
 func (client *Client) fetchAntigravity(ctx context.Context, authIndex string, entry map[string]any) ([]quota.Window, string, error) {
 	project := projectID(entry)
 	metadata := map[string]string{
@@ -675,10 +639,6 @@ func antigravityWindow(value string) (string, string) {
 	}
 }
 
-func (client *Client) loadGoogleProject(ctx context.Context, authIndex, project string, metadata map[string]string) (string, string, error) {
-	return client.loadGoogleProjectAt(ctx, authIndex, geminiLoadURL, project, metadata)
-}
-
 func (client *Client) loadGoogleProjectAt(ctx context.Context, authIndex, endpoint, project string, metadata map[string]string) (string, string, error) {
 	if project != "" {
 		metadata["duetProject"] = project
@@ -710,7 +670,7 @@ func (client *Client) loadGoogleProjectAt(ctx context.Context, authIndex, endpoi
 		loadedProject = project
 	}
 	if loadedProject == "" {
-		return "", "", errors.New("Gemini loadCodeAssist returned no project")
+		return "", "", errors.New("loadCodeAssist returned no project")
 	}
 	plan := strings.ToLower(strings.TrimSpace(firstString(
 		nested(payload, "paidTier", "id"),
@@ -734,88 +694,6 @@ func googleHeaders() map[string]string {
 		"Authorization": "Bearer $TOKEN$",
 		"Content-Type":  "application/json",
 		"User-Agent":    "ai-quota-frame/1",
-	}
-}
-
-func geminiMetadata() map[string]string {
-	return map[string]string{
-		"ideType":    "IDE_UNSPECIFIED",
-		"platform":   "PLATFORM_UNSPECIFIED",
-		"pluginType": "GEMINI",
-	}
-}
-
-func parseGeminiBuckets(payload map[string]any) []quota.Window {
-	rawBuckets, ok := payload["buckets"].([]any)
-	if !ok {
-		return nil
-	}
-	type aggregate struct {
-		label     string
-		remaining float64
-		reset     *time.Time
-		seen      bool
-	}
-	groups := map[string]*aggregate{
-		"pro":   {label: "Pro"},
-		"flash": {label: "Flash"},
-		"other": {label: "Other"},
-	}
-	for _, item := range rawBuckets {
-		bucket := mapValue(item)
-		if bucket == nil {
-			continue
-		}
-		modelID := strings.ToLower(firstString(bucket["modelId"], bucket["model_id"]))
-		remainingFraction, ok := fraction(firstNonNil(bucket["remainingFraction"], bucket["remaining_fraction"], bucket["remaining"]))
-		if !ok {
-			continue
-		}
-		groupID := "other"
-		switch {
-		case strings.Contains(modelID, "pro"):
-			groupID = "pro"
-		case strings.Contains(modelID, "flash"):
-			groupID = "flash"
-		}
-		current := groups[groupID]
-		remaining := *quota.Percent(remainingFraction * 100)
-		reset := timeValue(firstNonNil(bucket["resetTime"], bucket["reset_time"]), time.Now())
-		if !current.seen || remaining < current.remaining {
-			current.remaining = remaining
-			current.reset = reset
-		}
-		current.seen = true
-	}
-
-	order := []string{"pro", "flash", "other"}
-	windows := make([]quota.Window, 0, len(order))
-	for _, id := range order {
-		group := groups[id]
-		if !group.seen {
-			continue
-		}
-		windows = append(windows, quota.Window{
-			ID:               id,
-			Label:            group.label,
-			UsedPercent:      quota.Percent(100 - group.remaining),
-			RemainingPercent: quota.Percent(group.remaining),
-			ResetsAt:         group.reset,
-			Source:           activeQuotaSource,
-		})
-	}
-	sort.SliceStable(windows, func(i, j int) bool { return geminiWindowRank(windows[i].ID) < geminiWindowRank(windows[j].ID) })
-	return windows
-}
-
-func geminiWindowRank(id string) int {
-	switch id {
-	case "pro":
-		return 0
-	case "flash":
-		return 1
-	default:
-		return 2
 	}
 }
 
