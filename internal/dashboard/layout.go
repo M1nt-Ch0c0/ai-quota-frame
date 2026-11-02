@@ -138,10 +138,14 @@ func aggregateWindows(provider string, accounts []quota.Account) []displayWindow
 			}
 		}
 	}
+	limit := 2
 	var preferred []string
 	switch provider {
-	case "codex", "kimi", "claude", "antigravity", "opencode":
+	case "codex", "kimi", "claude", "antigravity":
 		preferred = []string{"5h", "7d"}
+	case "opencode":
+		preferred = []string{"5h", "7d", "1m"}
+		limit = 3
 	}
 	ordered := []string{}
 	seen := map[string]bool{}
@@ -151,8 +155,8 @@ func aggregateWindows(provider string, accounts []quota.Account) []displayWindow
 			ordered = append(ordered, id)
 		}
 	}
-	if len(ordered) > 2 {
-		ordered = ordered[:2]
+	if len(ordered) > limit {
+		ordered = ordered[:limit]
 	}
 	result := make([]displayWindow, 0, len(ordered))
 	for _, id := range ordered {

@@ -50,8 +50,12 @@ func TestFetchOpenCodeUsesPluginQuotaProvider(t *testing.T) {
 	assertProviderReset(t, fiveHour.ResetsAt, "2026-11-01T21:13:33Z")
 	weekly := requireProviderWindow(t, windows, "7d")
 	assertProviderPercent(t, weekly.RemainingPercent, 99, "OpenCode weekly remaining")
-	monthly := requireProviderWindow(t, windows, "30d")
+	monthly := requireProviderWindow(t, windows, "1m")
+	assertProviderPercent(t, monthly.RemainingPercent, 75, "OpenCode monthly remaining")
 	assertProviderPercent(t, monthly.UsedPercent, 25, "OpenCode monthly used")
+	if len(windows) != 3 || windows[0].ID != "5h" || windows[1].ID != "7d" || windows[2].ID != "1m" {
+		t.Fatalf("windows = %+v, want 5h, 7d, 1m", windows)
+	}
 }
 
 func TestFetchOpenCodeFailsClosed(t *testing.T) {

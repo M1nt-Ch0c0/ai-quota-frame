@@ -139,6 +139,7 @@ body { background: var(--white); color: var(--black); }
 }
 
 .window-label::after { content: " window"; }
+.windows-3 .window-label::after { content: none; }
 
 .window-value {
   grid-column: 1 / -1;

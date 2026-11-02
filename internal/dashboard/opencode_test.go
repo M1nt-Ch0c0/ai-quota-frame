@@ -20,7 +20,7 @@ func TestOpenCodeRowShowsQuotaAndPlan(t *testing.T) {
 	reset := snapshot.Accounts[0].Windows[0].ResetsAt
 	snapshot.Accounts = append(snapshot.Accounts,
 		quota.Account{Provider: "opencode", Name: "oc", Plan: "go plus", Status: "ok", Windows: []quota.Window{
-			{ID: "30d", Label: "30d", RemainingPercent: quota.Percent(75), Source: "t"},
+			{ID: "1m", Label: "1m", RemainingPercent: quota.Percent(75), Source: "t"},
 			{ID: "7d", Label: "7d", RemainingPercent: quota.Percent(99), Source: "t"},
 			{ID: "5h", Label: "5h", RemainingPercent: quota.Percent(98), ResetsAt: reset, Source: "t"},
 		}},
@@ -37,13 +37,10 @@ func TestOpenCodeRowShowsQuotaAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, needle := range []string{"OPENCODE", "Go Plus", "98%", "99%", `data-logo="opencode"`, "AGY", "Ultra"} {
+	for _, needle := range []string{"OPENCODE", "Go Plus", "98%", "99%", "75%", ">1m<", `windows-3`, `data-logo="opencode"`, "AGY", "Ultra"} {
 		if !strings.Contains(html, needle) {
 			t.Errorf("frame lacks %q", needle)
 		}
-	}
-	if strings.Contains(html, "75%") {
-		t.Error("monthly window displaced the preferred 5h/7d windows")
 	}
 }
 

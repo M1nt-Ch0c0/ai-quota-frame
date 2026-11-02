@@ -40,7 +40,7 @@
             {{end}}
           </div>
         </div>
-        <div class="row-body">
+        <div class="row-body{{if eq (len .Windows) 3}} windows-3{{end}}">
           {{range .Windows}}
           <div class="window">
             <div class="window-head">

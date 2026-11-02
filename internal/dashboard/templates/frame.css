@@ -307,6 +307,16 @@ html, body {
   min-width: 0;
 }
 
+.row-windows.windows-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.windows-3 .window { min-width: 0; overflow: hidden; }
+.windows-3 .window-head { justify-content: flex-start; gap: 6px; }
+.windows-3 .window-label { font-size: 15px; }
+.windows-3 .window-percent { font-size: 22px; }
+
 .window-empty {
   grid-column: 1 / -1;
   font-size: 17px;

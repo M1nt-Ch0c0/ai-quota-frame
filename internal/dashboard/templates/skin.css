@@ -150,6 +150,39 @@ html, body {
   padding-left: 14px;
 }
 
+.row-body.windows-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.windows-3 .window {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "label meter value" "reset reset reset";
+  column-gap: 6px;
+  row-gap: 2px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.windows-3 .window-head { display: contents; }
+.windows-3 .window-left { display: none; }
+.windows-3 .window-label { grid-area: label; font-size: 15px; line-height: 16px; }
+.windows-3 .window-value { grid-area: value; }
+.windows-3 .window-percent { font-size: 16px; line-height: 16px; }
+.windows-3 .hp-label { display: none; }
+.windows-3 .heart-meter { grid-area: meter; grid-template-columns: minmax(0, 1fr); gap: 0; min-width: 0; }
+.windows-3 .heart-track { min-width: 0; }
+.windows-3 .window-reset { grid-area: reset; }
+.windows-3 .heart-track svg {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: 12px;
+  height: 11px;
+}
+
 .window {
   display: flex;
   flex-direction: column;

@@ -29,7 +29,7 @@
           {{end}}
         </div>
       </div>
-      <div class="row-body">
+      <div class="row-body{{if eq (len $row.Windows) 3}} windows-3{{end}}">
         {{range $windowIndex, $window := $row.Windows}}
         <div class="window">
           <div class="window-head">

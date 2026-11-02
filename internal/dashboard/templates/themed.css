@@ -186,6 +186,17 @@ html, body {
   height: 100%;
 }
 
+.row-body.windows-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.windows-3 .window { min-width: 0; overflow: hidden; }
+.windows-3 .window-head { justify-content: flex-start; gap: 6px; }
+.windows-3 .window-left { display: none; }
+.windows-3 .window-label { font-size: 15px; line-height: 16px; }
+.windows-3 .window-percent { font-size: 18px; line-height: 18px; }
+
 .window {
   display: flex;
   flex-direction: column;

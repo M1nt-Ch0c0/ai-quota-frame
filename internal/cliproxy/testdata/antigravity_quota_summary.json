@@ -1,19 +1,19 @@
 {
   "groups": [
     {
-      "displayName": "Gemini",
-      "description": "Gemini model quota",
+      "displayName": "Gemini Models",
+      "description": "Gemini 3.8 Flash",
       "buckets": [
         {
-          "bucketId": "gemini-pro-5h",
-          "displayName": "Gemini Pro 5h",
+          "bucketId": "gemini-5h",
+          "displayName": "Gemini 3.8 Flash 5h",
           "window": "5h",
           "remainingFraction": 0.64,
           "resetTime": "2026-08-30T12:00:00Z"
         },
         {
-          "bucketId": "gemini-pro-weekly",
-          "displayName": "Gemini Pro weekly",
+          "bucketId": "gemini-weekly",
+          "displayName": "Gemini 3.8 Flash weekly",
           "window": "weekly",
           "remainingFraction": 0.72,
           "resetTime": "2026-09-05T00:00:00Z"
@@ -21,21 +21,33 @@
       ]
     },
     {
-      "displayName": "Claude",
-      "description": "Claude model quota",
+      "displayName": "Claude and GPT models",
+      "description": "Claude 4.6",
       "buckets": [
         {
-          "bucketId": "claude-5h",
-          "displayName": "Claude 5h",
+          "bucketId": "3p-5h",
+          "displayName": "Claude 4.6 5h",
           "window": "5h",
           "remainingFraction": 0.4,
           "resetTime": "2026-08-30T11:00:00Z"
         },
         {
-          "bucketId": "claude-weekly",
-          "displayName": "Claude weekly",
+          "bucketId": "3p-weekly",
+          "displayName": "Claude 4.6 weekly",
           "window": "weekly",
           "remainingFraction": 0.88,
+          "resetTime": "2026-09-06T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "displayName": "Gemini 4 Argon",
+      "buckets": [
+        {
+          "bucketId": "gemini-argon-wtu-weekly",
+          "displayName": "Gemini 4 Argon weekly",
+          "window": "weekly",
+          "remainingFraction": 0.05,
           "resetTime": "2026-09-06T00:00:00Z"
         }
       ]

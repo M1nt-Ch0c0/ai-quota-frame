@@ -125,7 +125,7 @@ func TestFetchClaudeParsesFixturePercentAndScopedWindows(t *testing.T) {
 	}
 }
 
-func TestFetchAntigravityUsesQuotaSummaryAndConservativeWindowAggregation(t *testing.T) {
+func TestFetchAntigravityUsesGeminiFlashQuota(t *testing.T) {
 	const dailySummaryURL = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	loadBody := providerFixtureBody(t, "google_load_paid_tier.json")
 	quotaBody := providerFixtureBody(t, "antigravity_quota_summary.json")
@@ -145,6 +145,9 @@ func TestFetchAntigravityUsesQuotaSummaryAndConservativeWindowAggregation(t *tes
 			} else if got := firstString(data["project"]); got != "fixture-project" {
 				t.Errorf("Antigravity request project = %q, want fixture-project", got)
 			}
+			if got := request.Header["User-Agent"]; got != antigravityClientUA {
+				t.Errorf("Antigravity User-Agent = %q", got)
+			}
 			return providerSuccessResponse(quotaBody)
 		default:
 			t.Errorf("unexpected Antigravity provider URL %q", request.URL)
@@ -163,15 +166,49 @@ func TestFetchAntigravityUsesQuotaSummaryAndConservativeWindowAggregation(t *tes
 		t.Fatalf("quota summary calls = %v, want [%s]", quotaURLs, dailySummaryURL)
 	}
 
+	if len(windows) != 2 {
+		t.Fatalf("window count = %d, want the Gemini 5h and weekly buckets", len(windows))
+	}
 	fiveHour := requireProviderWindow(t, windows, "5h")
-	assertProviderPercent(t, fiveHour.RemainingPercent, 40, "Antigravity 5h remaining")
-	assertProviderPercent(t, fiveHour.UsedPercent, 60, "Antigravity 5h used")
-	assertProviderReset(t, fiveHour.ResetsAt, "2026-08-30T11:00:00Z")
+	assertProviderPercent(t, fiveHour.RemainingPercent, 64, "Gemini 3.8 Flash 5h remaining")
+	assertProviderPercent(t, fiveHour.UsedPercent, 36, "Gemini 3.8 Flash 5h used")
+	assertProviderReset(t, fiveHour.ResetsAt, "2026-08-30T12:00:00Z")
 
 	weekly := requireProviderWindow(t, windows, "7d")
-	assertProviderPercent(t, weekly.RemainingPercent, 72, "Antigravity weekly remaining")
-	assertProviderPercent(t, weekly.UsedPercent, 28, "Antigravity weekly used")
+	assertProviderPercent(t, weekly.RemainingPercent, 72, "Gemini 3.8 Flash weekly remaining")
+	assertProviderPercent(t, weekly.UsedPercent, 28, "Gemini 3.8 Flash weekly used")
 	assertProviderReset(t, weekly.ResetsAt, "2026-09-05T00:00:00Z")
+}
+
+func TestParseAntigravityPrefersNamedGeminiFlashOverSharedAndClaudePools(t *testing.T) {
+	payload := map[string]any{"groups": []any{
+		map[string]any{"displayName": "Gemini Models", "buckets": []any{
+			map[string]any{"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.9},
+		}},
+		map[string]any{"displayName": "Gemini 3.8 Flash", "buckets": []any{
+			map[string]any{"bucketId": "gemini-3.8-flash-5h", "window": "5h", "remainingFraction": 0.5},
+		}},
+		map[string]any{"displayName": "Claude 4.6", "buckets": []any{
+			map[string]any{"bucketId": "3p-5h", "window": "5h", "remainingFraction": 0.1},
+		}},
+	}}
+	windows := parseAntigravityGeminiFlash(payload)
+	fiveHour := requireProviderWindow(t, windows, "5h")
+	assertProviderPercent(t, fiveHour.RemainingPercent, 50, "named Gemini 3.8 Flash remaining")
+	if len(windows) != 1 {
+		t.Fatalf("window count = %d", len(windows))
+	}
+}
+
+func TestParseAntigravityRejectsClaudeOnlySummary(t *testing.T) {
+	payload := map[string]any{"groups": []any{
+		map[string]any{"displayName": "Claude and GPT models", "buckets": []any{
+			map[string]any{"bucketId": "3p-5h", "window": "5h", "remainingFraction": 0.4},
+		}},
+	}}
+	if windows := parseAntigravityGeminiFlash(payload); len(windows) != 0 {
+		t.Fatalf("Claude-only summary produced windows: %+v", windows)
+	}
 }
 
 func TestProviderUnitValidatorsRejectSchemaDrift(t *testing.T) {

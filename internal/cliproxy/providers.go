@@ -21,11 +21,15 @@ const (
 	antigravityDaily   = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	antigravitySandbox = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	antigravityURL     = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
-	kimiUsageURL       = "https://api.kimi.com/coding/v1/usages"
-	xaiBillingURL      = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
-	xaiClientVersion   = "0.2.120"
-	activeQuotaSource  = "oauth_internal_endpoint"
-	passiveQuotaSource = "cliproxy_headers"
+	// daily-cloudcode-pa omits the Gemini Models group for a 1.0.x client and
+	// returns only the Claude/GPT pool. 1.4.5 is a consumer CLI identity that
+	// also receives the Gemini 3.8 Flash buckets.
+	antigravityClientUA = "antigravity/cli/1.4.5 (aidev_client; os_type=linux; arch=amd64; cl=1004422050; auth_method=consumer)"
+	kimiUsageURL        = "https://api.kimi.com/coding/v1/usages"
+	xaiBillingURL       = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+	xaiClientVersion    = "0.2.120"
+	activeQuotaSource   = "oauth_internal_endpoint"
+	passiveQuotaSource  = "cliproxy_headers"
 )
 
 // fetchXAI reads the shared Grok usage pool exposed by the official Grok Build
@@ -536,9 +540,9 @@ func (client *Client) fetchAntigravity(ctx context.Context, authIndex string, en
 			lastErr = err
 			continue
 		}
-		windows := parseAntigravitySummary(payload)
+		windows := parseAntigravityGeminiFlash(payload)
 		if len(windows) == 0 {
-			lastErr = errors.New("Antigravity quota response contained no usable buckets")
+			lastErr = errors.New("Antigravity quota response contained no Gemini 3.8 Flash buckets")
 			continue
 		}
 		return windows, plan, nil
@@ -550,9 +554,27 @@ func (client *Client) fetchAntigravity(ctx context.Context, authIndex string, en
 }
 
 func parseAntigravitySummary(payload map[string]any) []quota.Window {
+	return parseQuotaGroups(payload, false)
+}
+
+// parseAntigravityGeminiFlash keeps the Gemini 3.8 Flash pool. That model
+// draws the Gemini Models buckets. Claude 4.6 is the separate 3p pool, and
+// Gemini 4 Argon has its own weekly bucket; the minimum of those pools is a
+// different model's usage.
+func parseAntigravityGeminiFlash(payload map[string]any) []quota.Window {
+	return parseQuotaGroups(payload, true)
+}
+
+func parseQuotaGroups(payload map[string]any, geminiFlashOnly bool) []quota.Window {
 	rawGroups, ok := payload["groups"].([]any)
 	if !ok || len(rawGroups) == 0 {
 		return nil
+	}
+	if geminiFlashOnly {
+		rawGroups = filterGeminiFlashGroups(rawGroups)
+		if len(rawGroups) == 0 {
+			return nil
+		}
 	}
 	type aggregate struct {
 		label     string
@@ -624,14 +646,74 @@ func parseAntigravitySummary(payload map[string]any) []quota.Window {
 	return result
 }
 
+func filterGeminiFlashGroups(rawGroups []any) []any {
+	best := 0
+	chosen := make([]any, 0, 1)
+	for _, raw := range rawGroups {
+		group := mapValue(raw)
+		if group == nil {
+			continue
+		}
+		rank := geminiFlashRank(group)
+		if rank == 0 {
+			continue
+		}
+		if rank > best {
+			best = rank
+			chosen = chosen[:0]
+		}
+		if rank == best {
+			chosen = append(chosen, raw)
+		}
+	}
+	return chosen
+}
+
+func geminiFlashRank(group map[string]any) int {
+	text := strings.ToLower(quotaGroupText(group))
+	for _, needle := range []string{"claude", "gpt", "argon", "3p-", "opus", "sonnet"} {
+		if strings.Contains(text, needle) {
+			return 0
+		}
+	}
+	if strings.Contains(text, "gemini-3.8") || strings.Contains(text, "gemini-3-8-flash") || (strings.Contains(text, "3.8") && strings.Contains(text, "flash")) {
+		return 2
+	}
+	if strings.Contains(text, "gemini") {
+		return 1
+	}
+	return 0
+}
+
+func quotaGroupText(group map[string]any) string {
+	parts := []string{
+		firstString(group["displayName"]),
+		firstString(group["display_name"]),
+		firstString(group["description"]),
+	}
+	buckets, _ := group["buckets"].([]any)
+	for _, raw := range buckets {
+		bucket := mapValue(raw)
+		if bucket == nil {
+			continue
+		}
+		for _, key := range []string{"bucketId", "bucket_id", "displayName", "display_name", "model", "modelId", "model_id"} {
+			if value := firstString(bucket[key]); value != "" {
+				parts = append(parts, value)
+			}
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 func antigravityWindow(value string) (string, string) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "5h", "five-hour", "five_hour":
 		return "5h", "5h"
 	case "weekly", "week", "7d", "seven-day", "seven_day":
 		return "7d", "7d"
-	case "monthly", "month", "30d":
-		return "30d", "30d"
+	case "monthly", "month", "30d", "1m":
+		return "1m", "1m"
 	default:
 		id := slug(value)
 		if id == "" {
@@ -685,7 +767,7 @@ func antigravityHeaders() map[string]string {
 	return map[string]string{
 		"Authorization": "Bearer $TOKEN$",
 		"Content-Type":  "application/json",
-		"User-Agent":    "antigravity/cli/1.0.13 (aidev_client; os_type=linux; arch=amd64)",
+		"User-Agent":    antigravityClientUA,
 	}
 }
 

@@ -252,6 +252,20 @@ func TestAggregateWindowsPrefersFiveHourAndWeeklyForKimi(t *testing.T) {
 	}
 }
 
+func TestAggregateWindowsKeepsOpenCodeMonth(t *testing.T) {
+	windows := aggregateWindows("opencode", []quota.Account{
+		{Provider: "opencode", Windows: []quota.Window{
+			{ID: "1m", Label: "1m", RemainingPercent: quota.Percent(75)},
+			{ID: "7d", Label: "7d", RemainingPercent: quota.Percent(99)},
+			{ID: "5h", Label: "5h", RemainingPercent: quota.Percent(98)},
+			{ID: "extra", Label: "extra", RemainingPercent: quota.Percent(10)},
+		}},
+	})
+	if len(windows) != 3 || windows[0].label != "5h" || windows[1].label != "7d" || windows[2].label != "1m" {
+		t.Fatalf("OpenCode windows = %#v, want 5h, 7d, 1m", windows)
+	}
+}
+
 func TestAggregateRowsShowsGrokWithoutQuotaWindows(t *testing.T) {
 	rows := aggregateRows([]quota.Account{
 		{Provider: "xai", Name: "w***@example.com", Status: "unknown", Stale: true, Warning: "no verified quota adapter", Windows: []quota.Window{}},
