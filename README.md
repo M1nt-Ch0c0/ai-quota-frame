@@ -97,6 +97,8 @@ PHOTOFRAME_PUSH_TRANSPORT=ble
 
 `ble push --file frame.png` 可单次推图，`ble install --file module.pkg` 暂存应用包，`ble activate --app APP_ID` 显式试运行。命令、平台要求和历史兼容边界见 [BLE 指南](docs/ble.md)。
 
+`dist/aqf` 是类似 adb 的调试入口：后台 `aqf server` 保持已鉴权 BLE 会话，`aqf status`、`aqf shell` 等命令经本机 socket 快速执行，无需每次重新连接。`aqf shell` 需要支持 `PP_BLE_SHELL` 的宿主固件，见 [aqf 指南](docs/aqf.md)。
+
 ## macOS 常驻运行
 
 原生构建、当前鉴权和历史 BLE 实机结果见 [macOS 部署记录](docs/macos-deployment.md)。该原生/macOS 记录不代表本轮手机之外的完整配对/重置矩阵已验证。

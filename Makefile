@@ -1,5 +1,6 @@
 GO ?= go
 BINARY ?= dist/ai-quota-frame
+AQF_BINARY ?= dist/aqf
 TARGET_GOOS := $(shell $(GO) env GOOS)
 # CoreBluetooth requires CGO on macOS. Other desktop builds stay static.
 BUILD_CGO_ENABLED ?= $(if $(filter darwin,$(TARGET_GOOS)),1,0)
@@ -18,5 +19,6 @@ vet:
 build:
 	mkdir -p $(dir $(BINARY))
 	CGO_ENABLED=$(BUILD_CGO_ENABLED) $(GO) build -buildvcs=false -trimpath -ldflags='-s -w' -o $(BINARY) ./cmd/ai-quota-frame
+	CGO_ENABLED=$(BUILD_CGO_ENABLED) $(GO) build -buildvcs=false -trimpath -ldflags='-s -w' -o $(AQF_BINARY) ./cmd/aqf
 
 check: test race vet build
