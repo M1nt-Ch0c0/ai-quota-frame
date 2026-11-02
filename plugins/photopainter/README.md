@@ -1,6 +1,6 @@
 # PhotoPainter CPA 插件
 
-`plugins/photopainter/` 把网页插件打包成一个 CPA 插件：Go 写的 Linux 动态库（`.so`），由 CPA 加载后在 CPM 的插件菜单里出现“发送到相框”。当前版本 0.3.4，C ABI 1，插件 RPC schema 7。
+`plugins/photopainter/` 把网页插件打包成一个 CPA 插件：Go 写的 Linux 动态库（`.so`），由 CPA 加载后在 CPM 的插件菜单里出现“发送到相框”。当前版本 0.3.5，C ABI 1，插件 RPC schema 7。
 
 这一页写给构建和发布插件的人，讲插件提供哪些路由、怎么构建和核对产物、怎么安装、升级和回滚。页面本身怎么工作见 [web/README.md](../../web/README.md)，页面的使用方法见[电脑端、控制台与网页插件](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/07-clients.md#cpm-网页插件)。
 
