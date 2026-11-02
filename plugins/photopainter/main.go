@@ -34,7 +34,7 @@ var frameWASM []byte
 //go:embed wasm_exec.js
 var wasmRuntime []byte
 
-const version = "0.3.5"
+const version = "0.3.6"
 
 type envelope struct {
 	OK     bool `json:"ok"`
