@@ -7,7 +7,7 @@ CPA/CPM 服务，也未读取生产凭据、修改已安装服务或重启容器
 验证时客户端 checkout 基线为
 `513fc5e54b8c119b297c35e9e68a6580f7d2da9f`，叠加本次配对 v2、数据源鉴权、
 共享 Go/WASM 引擎及相关测试改动。下列记录来自提交前的离线验证；
-最终提交、提交后重建产物和交付包的对应关系以[早上验收清单](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/MORNING-ACCEPTANCE.md)及其 manifest 为准，不能将旧基线
+最终提交、提交后重建产物和交付包的对应关系以[早上验收清单](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-status.md)及其 manifest 为准，不能将旧基线
 的二进制当作本次交付。
 
 ## 本轮修复与回归

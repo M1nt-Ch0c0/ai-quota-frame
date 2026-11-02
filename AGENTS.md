@@ -1,6 +1,6 @@
 # AI quota frame agent guide
 
-**Current source baseline (2026-10-29):** plugin 0.3.2 shares the original Go/WASM renderer and uses saved physical-pairing v2 with ABI 2.3 GATT messages. Phone upload/completion and user visual confirmation passed; foreground scheduling has a real timer tick and automatic completion receipt; 0.3.2 adds a collapsed developer tool for application slot management. Fresh-pair/reset and native cross-platform acceptance are separate. See the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md) and [phone evidence](docs/validation-gatt-capacity-2026-10-29.md).
+**Current source baseline (2026-10-29):** plugin 0.3.2 shares the original Go/WASM renderer and uses saved physical-pairing v2 with ABI 2.3 GATT messages. Phone upload/completion and user visual confirmation passed; foreground scheduling has a real timer tick and automatic completion receipt; 0.3.2 adds a collapsed developer tool for application slot management. Fresh-pair/reset and native cross-platform acceptance are separate. See the [status matrix](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-status.md) and [phone evidence](docs/validation-gatt-capacity-2026-10-29.md).
 
 Read this file before changing the PC-side service. For blank-machine setup, cross-repository integration, deployment, or hardware diagnosis, also read the complete project Skill in the sibling host checkout: `../photopainter-host/.agents/skills/develop-photopainter-stack/SKILL.md`.
 
@@ -10,7 +10,7 @@ This repository owns quota collection, optional usage collection, snapshot fresh
 
 **User-authorized browser plugin scope (2026-10-29):** `web/` owns the Web Bluetooth client and UI around the shared Go/WASM collector and renderer; `plugins/photopainter/` owns the CPA wrapper, static resources and authenticated xAI subject projection. Use existing CPA routes and preserve the official CPM frontend. Browser and native clients are distinct owners: pause the previous owner's automatic pushes and release its connection before a physical ownership transfer. Do not automatically resume a former owner after the browser takes ownership. Persist only protected, negotiated bond material; never send management/OAuth credentials over BLE. Browser image transactions must be durable before COMMIT; ambiguous completion permits QUERY of the original request only.
 
-See the [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md) for framework/app boundaries. BLE image sending prefers the photoframe ABI 2.2 CoC service on supported clients and retains its ABI 2.1 GATT path, keeping discovery/auth/OTA generic. The older host-specific transport remains as a compatibility implementation and regression baseline. Keep app business protocol descriptions with the app, and client invocation/deployment here.
+See the [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/README.md) for framework/app boundaries. BLE image sending prefers the photoframe ABI 2.2 CoC service on supported clients and retains its ABI 2.1 GATT path, keeping discovery/auth/OTA generic. The older host-specific transport remains as a compatibility implementation and regression baseline. Keep app business protocol descriptions with the app, and client invocation/deployment here.
 
 ## Non-negotiable constraints
 

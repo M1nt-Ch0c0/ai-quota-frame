@@ -4,15 +4,15 @@
 
 原生 Mac 在支持的设备上优先使用 ABI 2.2 CoC；当前网页支持 ABI 2.3 GATT 大消息，旧应用仍可使用其原 GATT 接口。2026-10-27 的 67,509 字节/2.477 秒和显示完成回执属于旧鉴权基线，保留在 [APP 收图历史](docs/app-ble-images.md)，不能用来证明配对 v2 已实机通过。
 
-**仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Status-and-Evidence.md)。
+**仓库职责：本仓库保留Go采集、渲染、发送与设备后台。** SwiftUI界面已拆至独立 [photopainter-console](https://github.com/M1nt-Ch0c0/photopainter-console)，通过本机Unix socket使用同一串行设备队列；验证边界见 [代码与证据](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/09-status.md)。
 
 **CPM 浏览器相框插件：**[使用与协议验证](web/README.md) · [原生插件构建、安装与回滚](plugins/photopainter/README.md)。页面共用 Go/WASM 数据与画面，通过访问者手机或电脑的 Web Bluetooth/GATT 发送。资源和最小账号投影使用现有 CPA 插件路由，官方 CPM 前端保持原样。浏览器与原生客户端是不同 owner；切换前暂停原 owner，按键重置后在新端配对。
 
 > **AI / 开发者入口：**先阅读 [`AGENTS.md`](AGENTS.md)。空白电脑部署、三仓联调和真机诊断使用 [`develop-photopainter-stack`](https://github.com/M1nt-Ch0c0/photopainter-host/blob/main/.agents/skills/develop-photopainter-stack/SKILL.md)。
 
-五个仓库的职责、架构图、耦合边界与修改影响，见 [PhotoPainter 架构总览](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/ARCHITECTURE.md)。
+五个仓库的职责、架构图、耦合边界与修改影响，见 [PhotoPainter 架构总览](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/01-overview.md)。
 
-**开发规范见 [PhotoPainter Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md)。** 本仓库负责采集、渲染、发送和主机部署；应用安装能力由设备宿主提供，本程序是其客户端。
+**开发规范见 [PhotoPainter Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/README.md)。** 本仓库负责采集、渲染、发送和主机部署；应用安装能力由设备宿主提供，本程序是其客户端。
 
 BLE 图片优先访问 photoframe ABI 2.2 CoC，旧设备/未接入CoC的平台使用APP的GATT兼容服务；应用必须已被选中；不自动切换应用，也不回退 HTTP。旧宿主 PNG 通道实现与回归测试保留。常驻发现、鉴权和应用 OTA 继续由宿主提供。
 

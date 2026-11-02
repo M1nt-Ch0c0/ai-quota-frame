@@ -7,7 +7,7 @@ button approval, reboot persistence, revocation or display completion.
 **Route:** BLE images prefer photoframe's ABI 2.2 CoC service on supported clients and retain its ABI 2.1 GATT path. The old
 host PNG sender remains a compatibility implementation and regression baseline.
 Discovery/auth/app OTA stay in the host. See the [application protocol](https://github.com/M1nt-Ch0c0/photoframe/blob/main/docs/ble-image-input.md)
-and [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/wiki/Home.md).
+and [developer Wiki](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/README.md).
 
 The v2 host firmware advertises protocol version 2 and supports physical pairing.
 BLE finds the device by stable ID, pushes PNG images and installs applications
