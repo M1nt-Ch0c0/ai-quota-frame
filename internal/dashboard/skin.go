@@ -33,8 +33,27 @@ func skinSlots() []skinRect {
 	return append(slots, skinRowSlots...)
 }
 
+// skinRowLayout returns the row slots for n rows. Up to three rows use the
+// baked slots; four or five rows split the same band (from the first slot's
+// top to the last slot's bottom) into shorter compact slots drawn over it.
+func skinRowLayout(n int) []skinRect {
+	if n <= len(skinRowSlots) {
+		return skinRowSlots
+	}
+	const gap = 6
+	top, bottom := skinRowSlots[0].Y0, skinRowSlots[len(skinRowSlots)-1].Y1
+	height := (bottom - top - gap*(n-1)) / n
+	slots := make([]skinRect, n)
+	for i := range slots {
+		y := top + i*(height+gap)
+		slots[i] = skinRect{skinRowSlots[0].X0, y, skinRowSlots[0].X1, y + height}
+	}
+	slots[n-1].Y1 = bottom
+	return slots
+}
+
 // skinThemes maps a skin theme (and its baked background) to the decoration
-// set drawn on it. Rows that do not fit the three slots use the classic layout.
+// set drawn on it.
 var skinThemes = map[string]string{"mint-skin": "mint"}
 
 func skinBackground(theme string) (template.URL, error) {
@@ -53,6 +72,8 @@ type skinFrameData struct {
 	ClockStyle template.CSS
 	UsageStyle template.CSS
 	RowStyles  []template.CSS
+	RowBand    template.CSS // compact layouts cover the baked slot gaps
+	RowCount   int
 }
 
 // BakeSkin turns generated artwork into a skin background: it scales the

@@ -227,6 +227,44 @@ html, body {
 
 .card svg { display: block; }
 
+/* Four or five rows share the three-slot band in shorter compact slots. The
+   band hides the baked slot borders; each row keeps one line per window. */
+.row-band {
+  position: absolute;
+  border-radius: 8px;
+  background: var(--ink-pale-mint);
+}
+.rows-4 .row, .rows-5 .row { grid-template-columns: 188px minmax(0, 1fr); padding: 0 12px 0 8px; }
+.rows-4 .row-id, .rows-5 .row-id { gap: 8px; }
+.rows-4 .provider-logo { width: 28px; height: 28px; }
+.rows-5 .provider-logo { width: 24px; height: 24px; }
+.rows-4 .row-name, .rows-5 .row-name { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; }
+.rows-4 .provider { font-size: 18px; line-height: 19px; }
+.rows-5 .provider { font-size: 16px; line-height: 17px; }
+.rows-4 .plan, .rows-5 .plan { font-size: 11px; line-height: 12px; border-width: 1px; }
+.rows-4 .status, .rows-5 .status { font-size: 10px; line-height: 11px; }
+.rows-4 .mini-cards, .rows-5 .mini-cards { display: none; }
+.rows-4 .row-body, .rows-5 .row-body { gap: 14px; padding-left: 12px; }
+.rows-4 .window, .rows-5 .window {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "label meter value" "reset reset reset";
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: center;
+}
+.rows-4 .window-head, .rows-5 .window-head { display: contents; }
+.rows-4 .window-label, .rows-5 .window-label { grid-area: label; font-size: 15px; line-height: 16px; }
+.rows-4 .window-value, .rows-5 .window-value { grid-area: value; }
+.rows-4 .window-percent, .rows-5 .window-percent { font-size: 17px; line-height: 17px; }
+.rows-4 .window-left, .rows-5 .window-left { display: none; }
+.rows-4 .heart-meter, .rows-5 .heart-meter { grid-area: meter; grid-template-columns: minmax(0, 1fr); }
+.rows-4 .hp-label, .rows-5 .hp-label { display: none; }
+.rows-4 .window-reset { grid-area: reset; font-size: 11px; line-height: 12px; }
+.rows-5 .window-reset { display: none; }
+.rows-4 .window-empty, .rows-5 .window-empty { display: block; font-size: 14px; }
+.rows-4 .cards, .rows-5 .cards { display: none; }
+
 /* usage */
 
 .usage { display: flex; }

@@ -6,7 +6,7 @@
   <title>AI Quota Frame</title>
   <link rel="stylesheet" href="frame.css">
 </head>
-<body class="skin theme-{{.Theme}}">
+<body class="skin theme-{{.Theme}} rows-{{.RowCount}}">
   {{.Art.Defs}}
   <div class="frame">
     <img class="skin-background" src="{{.Background}}" alt="">
@@ -15,6 +15,7 @@
       {{.UpdatedText}}{{if .StatusText}} <span class="badge">{{.StatusText}}</span>{{end}}
     </div>
 
+    {{if .RowBand}}<div class="row-band" style="{{.RowBand}}"></div>{{end}}
     {{range $index, $row := .Rows}}
     <section class="slot row slot-{{$row.Slot}} row-{{$row.StatusClass}}" style="{{index $.RowStyles $index}}">
       <div class="row-id">

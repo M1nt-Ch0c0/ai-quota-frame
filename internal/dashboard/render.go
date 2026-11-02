@@ -87,11 +87,7 @@ func (renderer *Renderer) renderHTML(snapshot quota.Snapshot) (string, error) {
 	var buffer bytes.Buffer
 	theme := renderer.theme
 	if look, isSkin := skinThemes[theme]; isSkin {
-		if len(data.Rows) <= len(skinRowSlots) {
-			return renderer.renderSkin(data, theme, look)
-		}
-		// The skin artwork only has room for three rows; more use the classic layout.
-		theme = "classic"
+		return renderer.renderSkin(data, theme, look)
 	}
 	if theme == "classic" {
 		if err := renderer.tmpl.Execute(&buffer, data); err != nil {
@@ -118,9 +114,14 @@ func (renderer *Renderer) renderSkin(data frameData, theme, look string) (string
 		Background: background,
 		ClockStyle: skinClockSlot.Style(),
 		UsageStyle: skinUsageSlot.Style(),
+		RowCount:   len(data.Rows),
 	}
-	for _, slot := range skinRowSlots {
+	for _, slot := range skinRowLayout(len(data.Rows)) {
 		skin.RowStyles = append(skin.RowStyles, slot.Style())
+	}
+	if len(data.Rows) > len(skinRowSlots) {
+		first, last := skinRowSlots[0], skinRowSlots[len(skinRowSlots)-1]
+		skin.RowBand = skinRect{first.X0, first.Y0, last.X1, last.Y1}.Style()
 	}
 	var buffer bytes.Buffer
 	if err := renderer.skin.Execute(&buffer, skin); err != nil {

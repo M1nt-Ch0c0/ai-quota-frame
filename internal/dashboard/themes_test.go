@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"strings"
@@ -88,24 +89,47 @@ func testGradientImage(width, height int) *image.NRGBA {
 	return art
 }
 
-func TestMintSkinOverflowUsesClassicLayout(t *testing.T) {
-	renderer, err := New(time.UTC)
-	if err != nil {
-		t.Fatal(err)
+func TestMintSkinCompactsFourAndFiveRows(t *testing.T) {
+	for _, list := range []string{"codex,claude,xai,kimi", "codex,claude,xai,kimi,antigravity"} {
+		renderer, err := New(time.UTC)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := renderer.SetTheme("mint-skin"); err != nil {
+			t.Fatal(err)
+		}
+		providers, err := ParseDisplayProviders(list)
+		if err != nil {
+			t.Fatal(err)
+		}
+		renderer.SetDisplayProviders(providers)
+		html, err := renderer.renderHTML(testSnapshot())
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := len(providers)
+		if strings.Contains(html, `class="brand-title"`) || !strings.Contains(html, "data:image/png;base64,") ||
+			!strings.Contains(html, fmt.Sprintf("rows-%d", rows)) || !strings.Contains(html, `class="row-band"`) ||
+			strings.Count(html, `class="slot row `) != rows {
+			t.Fatalf("%d rows on mint-skin did not use the compact skin layout", rows)
+		}
 	}
-	if err := renderer.SetTheme("mint-skin"); err != nil {
-		t.Fatal(err)
+}
+
+func TestSkinRowLayoutStaysInsideBakedBand(t *testing.T) {
+	if got := skinRowLayout(3); len(got) != 3 || got[0] != skinRowSlots[0] {
+		t.Fatal("three rows must keep the baked slots")
 	}
-	providers, err := ParseDisplayProviders("codex,claude,xai,kimi")
-	if err != nil {
-		t.Fatal(err)
-	}
-	renderer.SetDisplayProviders(providers)
-	html, err := renderer.renderHTML(testSnapshot())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(html, `class="brand-title"`) || strings.Contains(html, "data:image/png;base64,") || strings.Contains(html, "theme-mint") {
-		t.Fatal("four rows on mint-skin did not fall back to the classic layout")
+	top, bottom := skinRowSlots[0].Y0, skinRowSlots[2].Y1
+	for _, n := range []int{4, 5} {
+		slots := skinRowLayout(n)
+		if len(slots) != n || slots[0].Y0 != top || slots[n-1].Y1 != bottom {
+			t.Fatalf("%d rows: %+v", n, slots)
+		}
+		for i := 1; i < n; i++ {
+			if slots[i].Y0 <= slots[i-1].Y1 || slots[i].Y1-slots[i].Y0 < 36 {
+				t.Fatalf("%d rows overlap or are too short: %+v", n, slots)
+			}
+		}
 	}
 }
