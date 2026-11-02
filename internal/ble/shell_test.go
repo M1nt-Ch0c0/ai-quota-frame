@@ -63,7 +63,7 @@ func TestShellUnsupportedFirmwareAndValidation(t *testing.T) {
 	if _, err := c.Shell(context.Background(), "uname"); !errors.Is(err, ErrShellUnsupported) {
 		t.Fatalf("err = %v", err)
 	}
-	for _, line := range []string{"", "a\nb", strings.Repeat("x", MaxShellCommand+1), "\xff"} {
+	for _, line := range []string{"", "a\nb", strings.Repeat("x", MaxShellCommand+1), "\xff", "a\u0085b"} {
 		if ValidateShellCommand(line) == nil {
 			t.Fatalf("accepted %q", line)
 		}

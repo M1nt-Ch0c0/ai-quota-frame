@@ -64,7 +64,10 @@ type consoleBridge struct {
 	pause      func(bool)
 	refresh    func(context.Context) error
 	withClient func(context.Context, func(context.Context, consoleDeviceClient) error) error
-	sender     *ble.AppImageSender
+	// exclusive wraps work that opens its own radio session or resets the
+	// device; the daemon closes its persistent session around it.
+	exclusive func(context.Context, func(context.Context) error) error
+	sender    *ble.AppImageSender
 }
 
 func newConsoleBridge(state *console.State, id, token string, pause func(bool), refresh func(context.Context) error) *consoleBridge {
@@ -72,6 +75,7 @@ func newConsoleBridge(state *console.State, id, token string, pause func(bool), 
 	b.withClient = func(ctx context.Context, work func(context.Context, consoleDeviceClient) error) error {
 		return ble.WithClient(ctx, id, token, func(ctx context.Context, client *ble.Client) error { return work(ctx, client) })
 	}
+	b.exclusive = func(ctx context.Context, work func(context.Context) error) error { return work(ctx) }
 	return b
 }
 func (b *consoleBridge) acquire(ctx context.Context) error {
@@ -238,12 +242,26 @@ func (b *consoleBridge) execute(ctx context.Context, r console.Request) error {
 		return b.cancelTrial(ctx)
 	}
 	if strings.HasPrefix(r.Action, "usb-") {
-		return b.executeUSB(ctx, r)
+		return b.exclusive(ctx, func(ctx context.Context) error { return b.executeUSB(ctx, r) })
+	}
+	if consoleOwnsRadio(r.Action) {
+		return b.exclusive(ctx, func(ctx context.Context) error { return b.executeExtra(ctx, r) })
 	}
 	if isConsoleExtra(r.Action) {
 		return b.executeExtra(ctx, r)
 	}
 	return errors.New("不支持的操作")
+}
+
+// consoleOwnsRadio lists extras that open their own BLE session, change the
+// pairing or use the serial port. The rest share the daemon session (via
+// readDevice or the image sender) and must not run inside exclusive.
+func consoleOwnsRadio(action string) bool {
+	switch action {
+	case "scan", "pair", "bind", "pair-status", "info", "unbind", "forget-pairing", "app-read", "app-write", "serial-diagnose":
+		return true
+	}
+	return strings.HasPrefix(action, "wifi-") && !strings.HasPrefix(action, "wifi-file-")
 }
 
 func readConsolePackage(path string) ([]byte, console.PackageInfo, error) {

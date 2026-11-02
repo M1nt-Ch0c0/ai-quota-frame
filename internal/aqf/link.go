@@ -1,5 +1,6 @@
-// Package aqf keeps one authenticated PhotoPainter BLE session open for the
-// aqf command line, in the way adb keeps device transports in its server.
+// Package aqf keeps the daemon's single authenticated PhotoPainter BLE session
+// open and shares it between image pushes, the console and the aqf command
+// line, in the way adb keeps device transports in its server.
 package aqf
 
 import (
@@ -31,13 +32,15 @@ type LinkState struct {
 	Since       time.Time       `json:"since,omitzero"`
 	LastError   string          `json:"last_error,omitempty"`
 	Connections int             `json:"connections"`
+	Busy        bool            `json:"busy,omitempty"`
 	Info        *ble.DeviceInfo `json:"info,omitempty"`
 }
 
 type call struct {
-	ctx  context.Context
-	work func(context.Context, Device) error
-	done chan error
+	ctx       context.Context
+	work      func(context.Context, Device) error
+	exclusive func(context.Context) error
+	done      chan error
 }
 
 type Link struct {
@@ -50,6 +53,7 @@ type Link struct {
 
 	mu    sync.Mutex
 	state LinkState
+	next  *call // an exclusive call that ended the previous session
 }
 
 func NewLink(id string, dial Dialer, keepalive, idle time.Duration) *Link {
@@ -80,6 +84,49 @@ func (l *Link) Do(ctx context.Context, work func(context.Context, Device) error)
 	}
 }
 
+// Exclusive closes the session and runs work while no session can be opened,
+// for operations that use the radio directly (scan, pairing) or reset the
+// device (USB flashing). The next Do reconnects.
+func (l *Link) Exclusive(ctx context.Context, work func(context.Context) error) error {
+	c := call{ctx: ctx, exclusive: work, done: make(chan error, 1)}
+	select {
+	case l.calls <- c:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-c.done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *Link) runExclusive(c call) {
+	l.setBusy(true)
+	c.done <- c.exclusive(c.ctx)
+	l.setBusy(false)
+}
+
+// WithClient has the shape of ble.WithClient, so the image sender and console
+// queue run their work on the shared session instead of a new connection.
+func (l *Link) WithClient(ctx context.Context, job func(context.Context, *ble.Client) error) error {
+	return l.Do(ctx, func(ctx context.Context, d Device) error {
+		c, ok := d.(*ble.Client)
+		if !ok {
+			return errors.New("BLE session has no native client")
+		}
+		return job(ctx, c)
+	})
+}
+
+// DialBLE authenticates with the saved pairing (or a legacy v1 token).
+func DialBLE(id, token string) Dialer {
+	return func(ctx context.Context, job func(context.Context, Device) error) error {
+		return ble.WithClient(ctx, id, token, func(ctx context.Context, c *ble.Client) error { return job(ctx, c) })
+	}
+}
+
 // Disconnect closes the current session; the next Do reconnects.
 func (l *Link) Disconnect() {
 	select {
@@ -90,6 +137,14 @@ func (l *Link) Disconnect() {
 
 func (l *Link) Run(ctx context.Context) {
 	for {
+		l.mu.Lock()
+		next := l.next
+		l.next = nil
+		l.mu.Unlock()
+		if next != nil {
+			l.runExclusive(*next)
+			continue
+		}
 		var first call
 		select {
 		case <-ctx.Done():
@@ -98,6 +153,11 @@ func (l *Link) Run(ctx context.Context) {
 			continue
 		case first = <-l.calls:
 		}
+		if first.exclusive != nil {
+			l.runExclusive(first)
+			continue
+		}
+		l.setBusy(true)
 		// A timed-out dial can still connect later on the radio goroutine, so
 		// exactly one side claims the first call's reply.
 		var claimed atomic.Bool
@@ -114,13 +174,16 @@ func (l *Link) Run(ctx context.Context) {
 			}
 			first.done <- err
 		}
+		l.setBusy(false)
 		l.disconnected(err)
 	}
 }
 
 func (l *Link) serve(ctx context.Context, d Device, first call) error {
 	run := func(c call) error {
+		l.setBusy(true)
 		err := c.work(c.ctx, d)
+		l.setBusy(false)
 		c.done <- err
 		var rejected ble.DeviceError
 		if err != nil && !errors.As(err, &rejected) && !errors.Is(err, ble.ErrShellUnsupported) {
@@ -156,6 +219,12 @@ func (l *Link) serve(ctx context.Context, d Device, first call) error {
 				return err
 			}
 		case c := <-l.calls:
+			if c.exclusive != nil {
+				l.mu.Lock()
+				l.next = &c
+				l.mu.Unlock()
+				return nil
+			}
 			if err := run(c); err != nil {
 				return err
 			}
@@ -164,6 +233,12 @@ func (l *Link) serve(ctx context.Context, d Device, first call) error {
 			}
 		}
 	}
+}
+
+func (l *Link) setBusy(busy bool) {
+	l.mu.Lock()
+	l.state.Busy = busy
+	l.mu.Unlock()
 }
 
 func (l *Link) connected(d Device) {

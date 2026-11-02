@@ -35,7 +35,12 @@ type ServerInfo struct {
 
 const deviceBudget = 90 * time.Second // scan + connect + authenticate + work
 
+// SocketPath is shared by the daemon and aqf. AQF_SOCKET selects another path,
+// e.g. when a system service runs the daemon as a different user.
 func SocketPath() (string, error) {
+	if path := os.Getenv("AQF_SOCKET"); path != "" {
+		return path, nil
+	}
 	dir, err := console.Directory()
 	return filepath.Join(dir, "aqf", "aqf.sock"), err
 }
@@ -117,7 +122,7 @@ func (s *Server) session(ctx context.Context, conn net.Conn) {
 func (s *Server) Handle(ctx context.Context, r Request) Response {
 	if r.DeviceID != "" {
 		if id, err := ble.NormalizeID(r.DeviceID); err != nil || id != s.Link.id {
-			return Response{Error: "aqf server is bound to device " + s.Link.id + "; run aqf kill-server to select another"}
+			return Response{Error: "the daemon serves device " + s.Link.id + "; change PHOTOFRAME_DEVICE_ID and restart it to select another"}
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, deviceBudget)
@@ -166,6 +171,9 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result = shell
 	default:
 		err = errors.New("unsupported aqf method")
+	}
+	if errors.Is(err, context.DeadlineExceeded) && s.Link.State().Busy {
+		err = errors.New("device is busy with another operation (for example an image push); retry later")
 	}
 	if err != nil {
 		return Response{Error: err.Error()}

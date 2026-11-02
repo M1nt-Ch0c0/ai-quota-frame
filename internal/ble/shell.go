@@ -41,7 +41,8 @@ func ValidateShellCommand(line string) error {
 		return errors.New("shell command must be 1..256 bytes of UTF-8")
 	}
 	for _, r := range line {
-		if r != '\t' && (r < 0x20 || r == 0x7f) {
+		// C1 controls are rejected by the host as invalid requests too.
+		if r != '\t' && (r < 0x20 || r >= 0x7f && r <= 0x9f) {
 			return errors.New("shell command contains control characters")
 		}
 	}

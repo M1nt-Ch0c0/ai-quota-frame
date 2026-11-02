@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
+	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/aqf"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/ble"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/config"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/console"
@@ -23,6 +25,8 @@ import (
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/service"
 	"github.com/M1nt-Ch0c0/ai-quota-frame/internal/sources"
 )
+
+var version = "dev"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -138,13 +142,27 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 		photoFramePusher.SetPaused(!state.Snapshot().Automatic)
 		photoFramePusher.SetObserver(state.Stage)
 	}
+	var deviceLink *aqf.Link
 	if configuration.PhotoFrameTransport == "ble" {
 		sender, err := ble.NewAppImageSender(configuration.PhotoFrameDeviceID, configuration.PhotoFramePushToken, "photoframe")
 		if err != nil {
 			logger.Error("initialize BLE image transport", "error", err)
 			return 2
 		}
+		// One persistent session serves pushes, the console and aqf clients.
+		id, _ := ble.NormalizeID(configuration.PhotoFrameDeviceID)
+		idle, err := aqf.SessionIdle()
+		if err != nil {
+			logger.Error("invalid AQF_SESSION_IDLE", "error", err)
+			return 2
+		}
+		deviceLink = aqf.NewLink(id, aqf.DialBLE(id, configuration.PhotoFramePushToken), aqf.Keepalive, idle)
+		sender.UseSession(deviceLink.WithClient)
 		if bridge != nil {
+			bridge.withClient = func(ctx context.Context, work func(context.Context, consoleDeviceClient) error) error {
+				return deviceLink.WithClient(ctx, func(ctx context.Context, c *ble.Client) error { return work(ctx, c) })
+			}
+			bridge.exclusive = deviceLink.Exclusive
 			bridge.sender = sender
 			sender.SetTransportObserver(bridge.state.TransportSelected)
 		}
@@ -188,6 +206,27 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var backgroundWorkers sync.WaitGroup
+	if deviceLink != nil {
+		backgroundWorkers.Add(2)
+		go func() { defer backgroundWorkers.Done(); deviceLink.Run(ctx) }()
+		go func() {
+			defer backgroundWorkers.Done()
+			path, err := aqf.SocketPath()
+			var listener net.Listener
+			if err == nil {
+				listener, err = aqf.Listen(path)
+			}
+			if err != nil {
+				logger.Warn("aqf socket unavailable", "error", err)
+				return
+			}
+			defer os.Remove(path)
+			server := &aqf.Server{Link: deviceLink, Version: version, Stop: stop}
+			if err := server.Serve(ctx, listener); err != nil {
+				logger.Warn("aqf socket stopped", "error", err)
+			}
+		}()
+	}
 	if bridge != nil {
 		backgroundWorkers.Add(2)
 		go func() { defer backgroundWorkers.Done(); bridge.run(ctx) }()

@@ -174,3 +174,32 @@ func TestServerOverSocket(t *testing.T) {
 	}
 	<-stopped
 }
+
+func TestExclusiveClosesSessionAndBlocksReconnect(t *testing.T) {
+	d := &fakeDevice{}
+	l, dials := startLink(t, d, time.Hour, 0)
+	if _, err := shell(t, l, "uname"); err != nil {
+		t.Fatal(err)
+	}
+	queued := make(chan error, 1)
+	err := l.Exclusive(context.Background(), func(context.Context) error {
+		if l.State().Connected {
+			return errors.New("session still open during exclusive work")
+		}
+		go func() { _, err := shell(t, l, "apps"); queued <- err }()
+		time.Sleep(20 * time.Millisecond)
+		if dials.Load() != 1 {
+			return errors.New("reconnected during exclusive work")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-queued; err != nil || dials.Load() != 2 {
+		t.Fatalf("queued call: dials=%d err=%v", dials.Load(), err)
+	}
+	if err := l.Exclusive(context.Background(), func(context.Context) error { return nil }); err != nil || dials.Load() != 2 {
+		t.Fatalf("idle exclusive: dials=%d err=%v", dials.Load(), err)
+	}
+}
