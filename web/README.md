@@ -2,7 +2,7 @@
 
 浏览器端直接复用 ai-quota-frame 的 Go 数据和画面实现，设备连接使用按键批准的配对 v2。入口是 CPM 插件菜单“发送到相框”；原生资源包装见 [安装说明](../plugins/photopainter/README.md)。
 
-**当前版本 0.3.3（薄巧主题、Antigravity 图标，移除 Gemini CLI）。** 配合 photoframe v21 / ABI 2.3，手机 67,626 字节上传 7.9 秒，签名显示回执与人眼确认通过；前台定时也已用真实 1 分钟检查和自动发送回执验证。首次物理配对/长按换绑等完整矩阵仍待验收，范围见 [现场记录](../docs/validation-gatt-capacity-2026-10-29.md)。
+**当前版本 0.3.4（薄巧主题选 4–5 个订阅时压缩显示，不再变成经典；Antigravity 图标，移除 Gemini CLI）。** 配合 photoframe v21 / ABI 2.3，手机 67,626 字节上传 7.9 秒，签名显示回执与人眼确认通过；前台定时也已用真实 1 分钟检查和自动发送回执验证。首次物理配对/长按换绑等完整矩阵仍待验收，范围见 [现场记录](../docs/validation-gatt-capacity-2026-10-29.md)。
 
 ## 画面与数据
 
