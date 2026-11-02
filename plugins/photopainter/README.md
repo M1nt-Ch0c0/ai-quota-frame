@@ -1,85 +1,129 @@
 # PhotoPainter CPA 插件
 
-当前版本 **0.3.4**，C ABI 1 / RPC schema 7，已热部署并验证生产资源与手机实际脚本摘要。页面支持持久配对、ABI 2.3 GATT 大消息、前台定时推送和开发者工具（应用槽管理），画面继续共用原生 Go/WASM 引擎；官方 CPM 前端和其他插件保持不变。手机推图已取得匹配完成回执，详细范围与产物摘要见 [验收记录](../../docs/validation-gatt-capacity-2026-10-29.md)。
+`plugins/photopainter/` 把网页插件打包成一个 CPA 插件：Go 写的 Linux 动态库（`.so`），由 CPA 加载后在 CPM 的插件菜单里出现“发送到相框”。当前版本 0.3.4，C ABI 1，插件 RPC schema 7。
 
-## 路由
+这一页写给构建和发布插件的人，讲插件提供哪些路由、怎么构建和核对产物、怎么安装、升级和回滚。页面本身怎么工作见 [web/README.md](../../web/README.md)，页面的使用方法见[电脑端、控制台与网页插件](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/07-clients.md#cpm-网页插件)。
 
-公开静态资源：
+## 插件提供什么
 
-- `/v0/resource/plugins/photopainter/panel`
-- `/v0/resource/plugins/photopainter/frame.wasm`（gzip）
-- `/v0/resource/plugins/photopainter/wasm_exec.js`
+插件只注册静态资源和一个管理接口，不注册模型、执行器、OAuth 或计费钩子，不监听新端口，也不代理蓝牙。采集、渲染、配对和推图都发生在访问页面的浏览器里。
 
-受既有管理鉴权保护的只读接口：
+### 静态资源
 
-- `GET /v0/management/plugins/photopainter/account-subject?name=...`
+| 路径 | 内容 | Content-Type |
+|---|---|---|
+| `/v0/resource/plugins/photopainter/panel` | 页面 `panel.html`，菜单名“发送到相框” | `text/html` |
+| `/v0/resource/plugins/photopainter/frame.wasm` | Go 引擎，带 `Content-Encoding: gzip` | `application/wasm` |
+| `/v0/resource/plugins/photopainter/wasm_exec.js` | Go 的 WASM 运行时 | `text/javascript` |
 
-该窄接口只为 xAI 返回 `{"sub":"..."}`。它通过官方 host auth 回调定位唯一的 xAI 记录，核对 auth_index/name/provider，只投影 subject；不返回 OAuth 文件、访问/刷新令牌或文件路径。匿名管理请求仍为 401，静态资源前缀不提供此数据接口。
+资源前缀下的其他路径返回 404。所有响应都带 `Cache-Control: no-store`、`X-Content-Type-Options: nosniff`，以及：
 
-插件不注册模型、执行器、OAuth 或计费 hook，不增加监听端口，不代理蓝牙。配对和图片收发由访问页面的浏览器执行。使用、存储和恢复规则见 [web/README.md](../../web/README.md)。
+- `Content-Security-Policy`：只允许同源脚本（含内联）、`wasm-unsafe-eval`、内联样式、`blob:`/`data:` 图片、同源连接和同源 iframe；`frame-ancestors 'self'`，`form-action 'none'`。
+- `Permissions-Policy: bluetooth=(self)`。
+
+### account-subject 接口
+
+```text
+GET /v0/management/plugins/photopainter/account-subject?name=<认证文件名>
+```
+
+这个接口挂在 CPA 的管理路由下，受 CPA 已有的管理鉴权保护；不带管理密钥访问返回 401。
+
+它只服务一个用途：采集 Grok（xAI）额度需要账号的 subject，原生程序从认证文件里读，浏览器则调用这个接口。插件通过 CPA 的宿主回调列出认证记录，找到名称、`auth_index` 和服务商都对得上的唯一一条 xAI 记录，只返回：
+
+```json
+{"sub": "..."}
+```
+
+不返回 OAuth 文件、访问令牌、刷新令牌或文件路径。
+
+出错时返回 `{"error": "<代码>"}`：
+
+| 状态码 | 代码 | 原因 |
+|---|---|---|
+| 400 | `invalid_account_name` | 查询参数不是唯一一个 `name`，或 `name` 为空、超过 512 字节、含路径分隔符、控制字符或首尾空白 |
+| 404 | `account_not_found` | 没有这个名称的认证记录 |
+| 404 | `account_not_available` | 找到的记录不是启用中的 xAI 账号 |
+| 404 | `account_subject_missing` | 认证记录里没有 subject |
+| 409 | `ambiguous_account` | 名称对应的记录不是唯一一条 |
+| 502 | `account_lookup_failed`、`account_read_failed`、`invalid_account`、`invalid_account_subject` | 从 CPA 读取认证记录失败或内容无效 |
 
 ## 构建
+
+需要 Node 22.18 或更新版本、Go 1.26 或更新版本、Chrome 或 Chromium（网页检查用），以及目标平台的 C 编译器。
 
 ```sh
 ./plugins/photopainter/build.sh
 ```
 
-完整构建需要 Node 22.18+、Go 1.26+ 和目标平台 C 编译器。脚本构建完整网页/共享引擎，将三项生成资源嵌入 native `.so`，再通过 `build-native.sh` 运行原生测试并输出 `dist/photopainter-v<version>.so`。生成文件和 dist 均忽略，不提交二进制或凭据。
+`build.sh` 做三件事：
 
-生产为 Linux amd64，不能部署 macOS 产物。本轮使用已有固定 builder：
+1. 在 `web/` 里 `npm ci --ignore-scripts && npm run build`。
+2. 把 `web/dist/` 里的 `panel.html`、`frame.wasm.gz`、`wasm_exec.js` 复制到 `plugins/photopainter/`。
+3. 运行 `build-native.sh`：执行插件的 Go 测试，然后用 `-buildmode=c-shared` 编译出 `dist/photopainter-v<版本>.so`。
 
-```text
-golang@sha256:05237276236793ebedaf0b87dab86add9ec9adc66ebef2dbc3107c18254cde1c
-```
+版本号取自 `main.go` 里的 `const version`；网页的版本在 `web/package.json`，两者保持一致。复制进来的三个资源和 `dist/` 都不提交。
 
-网页先在本地完成构建，复制 `panel.html`、`frame.wasm.gz`、`wasm_exec.js` 到本目录，再在该 Linux builder 中以 `--network none` 运行 `./build-native.sh`；Go 原生包装只依赖标准库。CI 也使用这个固定 builder，而非把较新 Ubuntu 的 GLIBC 依赖带入 Debian 12 生产环境。
+### 生产构建
 
-如果在 macOS 上用 Zig 交叉编译 Linux，先用本机工具链完成 `go test ./...` 和本机 C ABI 验证，再单独交叉构建；不能在 macOS 上把 Linux 测试二进制直接执行并称为通过。Linux CPA 实际加载仍需独立验收。
+生产环境是 Linux amd64。`.so` 必须和 CPA 服务器的平台一致，并且和服务器的 glibc 兼容。推荐做法：
+
+1. 在本地完成网页构建和检查（见 [web/README.md](../../web/README.md#构建和测试)），把三个资源复制进本目录。
+2. 在和服务器同一发行版的 Go 容器里断网运行 `./build-native.sh`。仓库的 CI 使用固定摘要的 Debian 12 Go 镜像，摘要写在 `.github/workflows/web-plugin.yml` 里：
+
+   ```sh
+   docker run --rm --network none \
+     -v "$PWD:/workspace" -w /workspace/plugins/photopainter \
+     golang@sha256:<工作流里的摘要> ./build-native.sh
+   ```
+
+插件的 Go 代码只依赖标准库，所以可以断网构建。
+
+在 macOS 上也可以用 Zig 交叉编译 Linux 产物，但 Linux 版的测试只能在 Linux 上运行。先在本机跑测试和本机 C ABI 检查，再单独交叉编译：
 
 ```sh
-# 本目录中运行，三个生成资源须已复制到位。
+cd plugins/photopainter
 go test ./...
-CGO_ENABLED=1 go build -buildvcs=false -trimpath -buildmode=c-shared \
-  -o /tmp/photopainter-darwin-arm64.so .
-python3 verify-native.py /tmp/photopainter-darwin-arm64.so ../../web/dist/panel.html
+CGO_ENABLED=1 go build -buildvcs=false -trimpath -buildmode=c-shared -o /tmp/photopainter-native.so .
+python3 verify-native.py /tmp/photopainter-native.so ../../web/dist/panel.html
 
-# Zig 路径按本机安装调整；这一步只构建 Linux 产物，不执行它。
-GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
-  CC='zig cc -target x86_64-linux-gnu.2.34' \
-  go build -buildvcs=false -trimpath -buildmode=c-shared \
-  -o dist/photopainter-v0.2.2.so .
+GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC='zig cc -target x86_64-linux-gnu.2.34' \
+  go build -buildvcs=false -trimpath -buildmode=c-shared -o dist/photopainter-v<版本>.so .
 ```
 
-验证真实导出 ABI 与三项内嵌资源：
+`-target` 里的 glibc 版本按服务器实际情况选择。
+
+### 核对产物
 
 ```sh
 python3 plugins/photopainter/verify-native.py \
-  plugins/photopainter/dist/photopainter-v0.2.2.so web/dist/panel.html
+  plugins/photopainter/dist/photopainter-v<版本>.so web/dist/panel.html
 ```
 
-## 安装、升级与回滚
+`verify-native.py` 在本机加载这个 `.so`（所以只能核对和本机同平台的产物），不需要服务器和真实凭据。它检查：
 
-以当前 CPA 8.0.45 / CPM 1.14.9 为验证基线。先备份配置、插件并记录容器/文件摘要。新 `.so` 置于既有 `plugins.dir/linux/amd64/`，文件 0644，运行 UID 可读。既有配置保留，仅启用 `plugins.configs.photopainter`。
+- C ABI 版本为 1，`plugin.register` 返回 schema 7，能力只有 `management_api`；
+- 注册的资源正好是 `panel`、`frame.wasm`、`wasm_exec.js`，其中只有一个带菜单；
+- 三个资源的字节和 `web/dist/` 里的文件完全一致，`frame.wasm` 带 gzip 编码且解压后是 WASM；
+- 其他管理路径返回 404，未实现的方法返回失败。
 
-版本升级使用新的版本文件名，保留旧库以便回滚。当前版本可在配置变化时扫描并热加载较新产物；测试已覆盖 0.1.0→0.2.0 且 Qoder 共存，CPA PID 不变。生产升级后必须验证真正加载的版本、菜单、完整资源摘要、匿名拒绝、受保护 subject 投影及其他容器/插件保持原状，不能仅凭文件复制成功宣布安装完成。
+通过后它输出一行 JSON，包含版本、库文件和各资源的字节数与 SHA-256，可以随发布记录保存。
 
-CPA 8.0.45 仅监视配置文件原 inode。外部写入须保留 inode，不能原子 rename 覆盖配置；那会使后续监听丢失。此前 0.1.0 首次安装已经遇到并回滚此问题，在用户批准窗口重启 CPA 后恢复监听。后续升级已使用保留 inode 的热加载，不需要重启整个栈。
+## 安装和升级
 
-停止本插件时仅关闭其 enabled 并验证菜单/资源撤销。回滚先保存当前状态，再撤下新库、恢复本插件对应配置变化并触发热加载；保留其他人的后续配置/凭据修改。不得无条件恢复整个旧配置或数据库。浏览器未确认事务不因软件回滚而成为“已取消”。
+1. 备份 CPA 的配置文件和插件目录。
+2. 把新的 `.so` 放进 CPA 配置中 `plugins.dir` 指向目录下的 `linux/amd64/`，权限 0644，确保 CPA 的运行用户可读。每个版本使用新文件名，旧版本的文件留着，方便回滚。
+3. 在 CPA 配置里启用 `plugins.configs.photopainter`，其他配置保持不变。CPA 检测到配置变化后，会扫描插件目录并热加载较新的版本，不需要重启。
+4. 修改配置文件时必须**原地写入**，保留原文件的 inode。CPA 只监听原来那个文件；如果用“写临时文件再重命名”的方式覆盖，CPA 会失去对配置的监听，之后的修改都不生效，只能重启 CPA 才能恢复。
+5. 发布后核对：
+   - CPM 插件菜单出现“发送到相框”，页面显示的版本正确；
+   - 三个资源的内容和 `verify-native.py` 输出的 SHA-256 一致；
+   - 不带管理鉴权访问 `account-subject` 返回 401，带鉴权时能为 xAI 账号返回 subject；
+   - 其他插件和服务不受影响。
 
-## 资源策略
+## 停用和回滚
 
-页面使用同源脚本、WASM、离屏 srcdoc 布局和 data/blob 图片。CSP 仅开放所需来源与 `wasm-unsafe-eval`；frame-ancestors 保持 self，设备访问策略为 bluetooth=(self)。插件优先复用 CPM 同源已保存登录，手动配置可由用户选择保存在本浏览器；服务端不为插件另存管理密钥；设备协商密钥不进入服务器。
+- **停用**：把 `plugins.configs.photopainter` 的 `enabled` 关掉，确认菜单和资源路由都消失了。
+- **回滚**：先保存当前状态，然后撤下新版本的 `.so`，只恢复这个插件对应的配置改动，触发热加载。不要把整个 CPA 配置或数据库恢复成旧备份，以免覆盖别人之后做的修改。
 
-## 当前证据
-
-原生 Go 测试、真实 C ABI/内嵌资源逐字节比对、精确 CPA 镜像 `network=none` 隔离升级与 Qoder 共存验证通过。subject 投影、匿名 401、公开前缀 404 已在隔离环境验证；生产 0.2.0 的实际 xAI subject 投影也通过，未输出字段值或凭据。
-
-0.2.0 生产热升级备份：`/var/backups/cpa-stack/photopainter-v2-20261028T194729Z`。所有容器保持原 ID/PID/启动时间，Qoder 与旧 0.1.0 文件保留。
-
-上述线上记录属于夜间任务前的历史证据。0.2.2 今晚未部署、未访问生产，离线新结果见 [夜间验证记录](../../web/validation-2026-10-29.md)。
-
-共享渲染、浏览器软件测试和真实设备验收是不同证据层次。设备固件与客户端配对 v2 已实现并构建，但在物理按键、重启和最终显示完成前，不能宣称整套目标已经闭环。
-
-
-0.3.1 在主页面提供定时推送：1–1440 分钟间隔（默认 15）、启停、下次检查、最近确认成功，以及可选的前台屏幕唤醒。锁屏或关闭页面后不保证运行；详见 [浏览器说明](../../web/README.md)。
+浏览器里还没确认的图片记录保存在访问者的 IndexedDB 里，不会因为插件回滚而消失，仍按[发送结果未知](https://github.com/M1nt-Ch0c0/esp32s3/blob/main/docs/08-maintenance.md#发送结果未知)处理。
